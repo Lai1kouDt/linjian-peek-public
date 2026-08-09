@@ -7,10 +7,12 @@ import { z } from "zod";
 
 const PORT = Number(process.env.PORT || 8787);
 const RAW_LINJIAN_URL = process.env.LINJIAN_URL || "";
-const LINJIAN_URL = (RAW_LINJIAN_URL && !/^https?:\/\//i.test(RAW_LINJIAN_URL)
-  ? `http://${RAW_LINJIAN_URL}`
-  : RAW_LINJIAN_URL
-).replace(/\/$/, "");
+const CLEAN_LINJIAN_URL = RAW_LINJIAN_URL.trim().replace(/\/$/, "");
+const LINJIAN_URL = !CLEAN_LINJIAN_URL || /^https?:\/\//i.test(CLEAN_LINJIAN_URL)
+  ? CLEAN_LINJIAN_URL
+  : /\.onrender\.com(?::\d+)?$/i.test(CLEAN_LINJIAN_URL)
+    ? `https://${CLEAN_LINJIAN_URL}`
+    : `http://${CLEAN_LINJIAN_URL}`;
 const LINJIAN_TOKEN = process.env.LINJIAN_TOKEN || "";
 const MCP_ACCESS_KEY = process.env.MCP_ACCESS_KEY || "";
 const DEFAULT_DEVICE = process.env.LINJIAN_DEFAULT_DEVICE || "android-phone";
