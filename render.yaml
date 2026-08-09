@@ -42,4 +42,4 @@ services:
         fromService:
           type: web
           name: zhangxinchuang-server
-          property: hostport
+          envVarKey: RENDER_EXTERNAL_HOSTNAME
