@@ -1,8 +1,10 @@
 # 掌心窗公开版 v0.3.5.1-cleartext-http
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/linzhi-524/linjian-peek-public)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Lai1kouDt/linjian-peek-public)
 
-> 这个按钮已指向公开仓库 `linzhi-524/linjian-peek-public`。仓库根目录已补 `render.yaml`，按钮会按 Blueprint 创建 `server` 和 `mcp` 两个服务，并共用同一个 `LINJIAN_TOKEN`。
+> 这个私人部署按钮已指向 Fork `Lai1kouDt/linjian-peek-public`。Blueprint 会创建 `server` 和 `mcp` 两个服务、共用 `LINJIAN_TOKEN`，并为 MCP 额外生成独立的 `MCP_ACCESS_KEY`。
+
+> 私人访问锁：不要使用公开的 `/mcp` 或 `/sse` 地址。部署后在 `zhangxinchuang-mcp` 的 Environment 页面复制 `MCP_ACCESS_KEY`，连接地址写成 `https://你的-mcp.onrender.com/mcp/<MCP_ACCESS_KEY>`。这串完整地址等同密码，不要公开或发给别人。
 
 掌心窗是一套“手机端 App + 同步后端 + MCP 服务”的小工具。它可以在你本人授权后，让你设置的陪伴对象看见手机生活状态、请求截图、打开 App、返回/主页/最近任务、点击/滑动、发送通知、设置闹钟、读取轻量生活状态，并在你需要时做应用门禁和主动提醒。
 
@@ -110,9 +112,10 @@
 3. 确认创建两个 Web Service：
    - `zhangxinchuang-server`：手机端连接的统一后端。
    - `zhangxinchuang-mcp`：AI 客户端连接的 MCP 服务。
-4. 部署完成后，手机 App 里填写 `zhangxinchuang-server` 的外部地址；AI 客户端里填写 `zhangxinchuang-mcp` 的 `/mcp` 或 `/sse` 地址。
+4. 部署完成后，手机 App 里填写 `zhangxinchuang-server` 的外部地址。
+5. 在 `zhangxinchuang-mcp` 的 Environment 页面复制自动生成的 `MCP_ACCESS_KEY`；AI 客户端填写 `https://你的-mcp.onrender.com/mcp/<MCP_ACCESS_KEY>`。SSE 客户端则使用 `/sse/<MCP_ACCESS_KEY>`。
 
-> 一键部署会自动生成并共用 `LINJIAN_TOKEN`。如果后续手动改 Token，记得 server、mcp、手机端三处必须一致。
+> 一键部署会自动生成并共用 `LINJIAN_TOKEN`，还会给 MCP 单独生成 `MCP_ACCESS_KEY`。如果后续手动改 Token，记得 server、mcp、手机端三处必须一致；更换访问密钥后，也要同步更新 AI 客户端里的完整 MCP 地址。
 
 ### 方式二：手动创建 Render 服务
 
@@ -173,18 +176,19 @@ Start Command: npm start
 LINJIAN_URL=https://你的后端地址.onrender.com
 LINJIAN_TOKEN=和后端完全一样的 token
 LINJIAN_DEFAULT_DEVICE=android-phone
+MCP_ACCESS_KEY=另一串仅供 AI 客户端使用的随机密钥
 ```
 
 部署完成后，MCP 地址通常是：
 
 ```text
-https://your-peek-mcp.onrender.com/mcp
+https://your-peek-mcp.onrender.com/mcp/<MCP_ACCESS_KEY>
 ```
 
 如果你的客户端只支持 SSE，就用：
 
 ```text
-https://your-peek-mcp.onrender.com/sse
+https://your-peek-mcp.onrender.com/sse/<MCP_ACCESS_KEY>
 ```
 
 ## 部署教程 2：Hugging Face Spaces
@@ -242,18 +246,19 @@ CMD ["npm", "start"]
 LINJIAN_URL=https://你的-server-space.hf.space
 LINJIAN_TOKEN=和 server 完全一样的 token
 LINJIAN_DEFAULT_DEVICE=android-phone
+MCP_ACCESS_KEY=另一串仅供 AI 客户端使用的随机密钥
 ```
 
 MCP 地址：
 
 ```text
-https://你的用户名-your-mcp.hf.space/mcp
+https://你的用户名-your-mcp.hf.space/mcp/<MCP_ACCESS_KEY>
 ```
 
 SSE 地址：
 
 ```text
-https://你的用户名-your-mcp.hf.space/sse
+https://你的用户名-your-mcp.hf.space/sse/<MCP_ACCESS_KEY>
 ```
 
 ## 部署教程 3：本地 / Codespaces
@@ -291,13 +296,14 @@ npm install
 export LINJIAN_URL='http://127.0.0.1:8513'
 export LINJIAN_TOKEN='和后端一样的token'
 export LINJIAN_DEFAULT_DEVICE='android-phone'
+export MCP_ACCESS_KEY='另一串仅供AI客户端使用的随机密钥'
 npm start
 ```
 
 本地 MCP 地址：
 
 ```text
-http://127.0.0.1:8787/mcp
+http://127.0.0.1:8787/mcp/<MCP_ACCESS_KEY>
 ```
 
 Codespaces 里要把端口 8513 和 8787 设为公开或转发，再把手机端服务器地址填成 8513 的公开地址。
@@ -341,7 +347,7 @@ Codespaces 里要把端口 8513 和 8787 设为公开或转发，再把手机端
 ## 安全边界
 
 - Token 不能公开。
-- MCP 地址如果内置了 Token，也不能公开。
+- `MCP_ACCESS_KEY` 和带密钥的完整 MCP 地址都不能公开。
 - 不要接入陌生人提供的 MCP 客户端。
 - 不要在他人设备上使用。
 - 回家模式可以只开提醒，不开自动打开目标 App。
