@@ -1,13 +1,48 @@
 import express from "express";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
 
 const PORT = Number(process.env.PORT || 8787);
-const LINJIAN_URL = (process.env.LINJIAN_URL || "").replace(/\/$/, "");
+const RAW_LINJIAN_URL = process.env.LINJIAN_URL || "";
+const LINJIAN_URL = (RAW_LINJIAN_URL && !/^https?:\/\//i.test(RAW_LINJIAN_URL)
+  ? `http://${RAW_LINJIAN_URL}`
+  : RAW_LINJIAN_URL
+).replace(/\/$/, "");
 const LINJIAN_TOKEN = process.env.LINJIAN_TOKEN || "";
+const MCP_ACCESS_KEY = process.env.MCP_ACCESS_KEY || "";
 const DEFAULT_DEVICE = process.env.LINJIAN_DEFAULT_DEVICE || "android-phone";
+
+function accessKeyFrom(req) {
+  const pathKey = req.params?.accessKey ?? req.params?.[0];
+  if (pathKey) return String(pathKey);
+
+  const headerKey = req.get("x-mcp-access-key");
+  if (headerKey) return headerKey;
+
+  const authorization = req.get("authorization") || "";
+  return authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+}
+
+function accessKeyMatches(candidate) {
+  if (!MCP_ACCESS_KEY || !candidate) return false;
+  const expected = createHash("sha256").update(MCP_ACCESS_KEY).digest();
+  const supplied = createHash("sha256").update(candidate).digest();
+  return timingSafeEqual(expected, supplied);
+}
+
+function requireMcpAccess(req, res, next) {
+  res.set("Cache-Control", "no-store");
+  if (!MCP_ACCESS_KEY) {
+    return res.status(503).json({ ok: false, error: "MCP access lock is not configured." });
+  }
+  if (!accessKeyMatches(accessKeyFrom(req))) {
+    return res.status(404).json({ ok: false, error: "Not found." });
+  }
+  next();
+}
 
 function requireConfig() {
   if (!LINJIAN_URL) throw new Error("Missing env LINJIAN_URL, for example https://linjian-peek.onrender.com");
@@ -514,18 +549,37 @@ function makeServer() {
 }
 
 const app = express();
-app.use(express.json({ limit: "32mb" }));
-app.get("/", (_req, res) => res.type("text/plain").send("掌心窗 unified MCP is running. Use /mcp for Streamable HTTP, or /sse for SSE."));
-app.get("/health", (_req, res) => res.json({ ok: true, service: "linjian-unified-mcp", version: "0.3.5.0", has_url: Boolean(LINJIAN_URL), has_token: Boolean(LINJIAN_TOKEN) }));
-app.post("/mcp", async (req, res) => {
+const jsonBody = express.json({ limit: "32mb" });
+app.get("/", (_req, res) => res.type("text/plain").send("掌心窗 unified MCP is running. The MCP endpoint is access-key protected."));
+app.get("/health", (_req, res) => res.json({ ok: true, service: "linjian-unified-mcp", version: "0.3.5.0", has_url: Boolean(LINJIAN_URL), has_token: Boolean(LINJIAN_TOKEN), has_access_key: Boolean(MCP_ACCESS_KEY) }));
+
+async function handleMcp(req, res) {
   try { const server = makeServer(); const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined }); res.on("close", () => transport.close()); await server.connect(transport); await transport.handleRequest(req, res, req.body); }
   catch (err) { console.error(err); if (!res.headersSent) res.status(500).json({ jsonrpc: "2.0", error: { code: -32603, message: String(err?.message || err) }, id: null }); }
-});
-app.get("/mcp", (_req, res) => res.status(405).json({ ok: false, error: "Use POST /mcp for Streamable HTTP MCP." }));
+}
+
+app.post("/mcp", requireMcpAccess, jsonBody, handleMcp);
+app.post("/mcp/:accessKey(*)", requireMcpAccess, jsonBody, handleMcp);
+app.get("/mcp", requireMcpAccess, (_req, res) => res.status(405).json({ ok: false, error: "Use POST for Streamable HTTP MCP." }));
+app.get("/mcp/:accessKey(*)", requireMcpAccess, (_req, res) => res.status(405).json({ ok: false, error: "Use POST for Streamable HTTP MCP." }));
+
 const sseTransports = new Map();
-app.get("/sse", async (_req, res) => {
-  try { const transport = new SSEServerTransport("/messages", res); sseTransports.set(transport.sessionId, transport); res.on("close", () => { sseTransports.delete(transport.sessionId); transport.close(); }); await makeServer().connect(transport); }
+async function handleSse(req, res) {
+  const pathKey = req.params?.accessKey ?? req.params?.[0];
+  const messagesPath = pathKey ? `/messages/${encodeURIComponent(pathKey)}` : "/messages";
+  try { const transport = new SSEServerTransport(messagesPath, res); sseTransports.set(transport.sessionId, transport); res.on("close", () => { sseTransports.delete(transport.sessionId); transport.close(); }); await makeServer().connect(transport); }
   catch (err) { console.error(err); if (!res.headersSent) res.status(500).end(String(err?.message || err)); }
-});
-app.post("/messages", async (req, res) => { const sessionId = req.query.sessionId; const transport = sseTransports.get(sessionId); if (!transport) return res.status(404).send("No SSE transport for sessionId"); await transport.handlePostMessage(req, res, req.body); });
+}
+
+async function handleSseMessage(req, res) {
+  const sessionId = req.query.sessionId;
+  const transport = sseTransports.get(sessionId);
+  if (!transport) return res.status(404).send("No SSE transport for sessionId");
+  await transport.handlePostMessage(req, res, req.body);
+}
+
+app.get("/sse", requireMcpAccess, handleSse);
+app.get("/sse/:accessKey(*)", requireMcpAccess, handleSse);
+app.post("/messages", requireMcpAccess, jsonBody, handleSseMessage);
+app.post("/messages/:accessKey(*)", requireMcpAccess, jsonBody, handleSseMessage);
 app.listen(PORT, "0.0.0.0", () => { console.log(`掌心窗 unified MCP listening on 0.0.0.0:${PORT}`); console.log(`LINJIAN_URL=${LINJIAN_URL || "<missing>"}`); });
