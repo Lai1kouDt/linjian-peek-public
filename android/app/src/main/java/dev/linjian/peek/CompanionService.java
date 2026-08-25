@@ -30,7 +30,6 @@ import java.util.List;
 
 public class CompanionService extends Service {
     private static final String CHANNEL_ID = "linjian_peek_service";
-    private static final String REMINDER_CHANNEL_ID = "linjian_peek_heads_up_v3";
     private static final int NOTIFICATION_ID = 20260715;
     private static volatile boolean running = false;
 
@@ -139,45 +138,12 @@ public class CompanionService extends Service {
             String match = cmd.optString("match", "contains");
             int index = cmd.optInt("index", 1);
             boolean append = cmd.optBoolean("append", false);
-            if ("save_known_app".equals(action)) {
-                String alias = cmd.optString("alias", app);
-                String p = cmd.optString("package", pkg);
-                AppPrefs.saveCustomApp(ctx, alias, p);
-                String result = "saved_known_app:" + alias + "=" + p;
-                DebugState.append(ctx, result);
-                try { reportCommand(ctx, serverUrl, token, id, true, result); uploadState(serverUrl, token, ctx); } catch (Exception ignored) { }
-                return;
-            }
-            if (isAppGateAction(action)) {
-                JSONObject rr = AppGate.handleCommand(ctx, cmd);
-                boolean ok = rr.optBoolean("ok", false);
-                String result = rr.optString("result", rr.toString());
-                DebugState.append(ctx, "执行应用门禁命令 " + action + "：" + result);
-                try { reportCommand(ctx, serverUrl, token, id, ok, result); uploadState(serverUrl, token, ctx); } catch (Exception ignored) { }
-                return;
-            }
-            if (isGuidianAction(action)) {
-                JSONObject rr = GuidianState.handleCommand(ctx, cmd);
-                boolean ok = rr.optBoolean("ok", false);
-                String result = rr.optString("result", rr.toString());
-                DebugState.append(ctx, "执行归电命令 " + action + "：" + result);
-                try { reportCommand(ctx, serverUrl, token, id, ok, result); uploadState(serverUrl, token, ctx); } catch (Exception ignored) { }
-                return;
-            }
             if ("run_sequence".equals(action)) {
                 executeSequence(ctx, id, cmd, serverUrl, token);
                 return;
             }
             executeCommand(ctx, id, action, app, pkg, x, y, x1, y1, x2, y2, duration, hour, minute, title, message, vibrate, serverUrl, token, skipUi, targetText, inputText, match, index, append);
         } catch (Exception e) { DebugState.append(ctx, "命令解析异常：" + ScreenshotService.shortMsg(e)); }
-    }
-
-    private static boolean isAppGateAction(String action) {
-        return "lock_app".equals(action) || "unlock_app".equals(action) || "temporary_unlock_app".equals(action) || "extend_lock".equals(action) || "deny_unlock_request".equals(action) || "get_lock_state".equals(action) || "set_emergency_passphrase".equals(action) || "add_locked_app".equals(action) || "remove_locked_app".equals(action) || "list_lockable_apps".equals(action);
-    }
-
-    private static boolean isGuidianAction(String action) {
-        return "get_guidian_state".equals(action) || "set_guidian_config".equals(action) || "trigger_guidian".equals(action) || "mark_guidian_returned".equals(action);
     }
 
     private static void executeCommand(Context ctx, String id, String action, String app, String pkg, float x, float y, float x1, float y1, float x2, float y2, long duration, int hour, int minute, String title, String message, boolean vibrate, String serverUrl, String token) {
@@ -202,9 +168,6 @@ public class CompanionService extends Service {
         try {
             ScreenshotService svc = ScreenshotService.getInstance();
             if ("wait".equals(action)) { ok = true; result = "wait";
-            } else if ("get_life_state".equals(action)) { ok = true; result = LifeState.collect(ctx).toString();
-            } else if (isAppGateAction(action)) { JSONObject rr = AppGate.handleCommand(ctx, new JSONObject().put("action", action).put("app", app).put("package", pkg)); ok = rr.optBoolean("ok", false); result = rr.optString("result", rr.toString());
-            } else if (isGuidianAction(action)) { JSONObject rr = GuidianState.handleCommand(ctx, new JSONObject().put("action", action)); ok = rr.optBoolean("ok", false); result = rr.toString();
             } else if ("get_screen_nodes".equals(action)) {
                 if (svc != null) { svc.refreshScreenModel(); ok = true; result = svc.getScreenNodesJsonNow(); }
                 else result = "accessibility service not ready";
@@ -227,8 +190,7 @@ public class CompanionService extends Service {
             } else if ("tap".equals(action)) { ok = svc != null && svc.doTap(x, y); result = ok ? ("tap:" + x + "," + y) : "tap_failed_or_accessibility_missing";
             } else if ("swipe".equals(action)) { ok = svc != null && svc.doSwipe(x1, y1, x2, y2, duration); result = ok ? "swipe" : "swipe_failed_or_accessibility_missing";
             } else if ("set_alarm".equals(action)) { ok = setAlarm(ctx, hour, minute, message, vibrate, skipUi); result = ok ? "alarm " + hour + ":" + minute : "cannot set alarm";
-            } else if ("send_notification".equals(action)) { ok = showReminderNotification(ctx, title, message); result = ok ? "heads_up_notification_sent" : "notification permission missing";
-            } else { ok = true; result = "noop"; }
+            } else { ok = false; result = "unsupported_action"; }
         } catch (Exception e) { result = ScreenshotService.shortMsg(e); }
         try { out.put("ok", ok); out.put("action", action); out.put("result", result); } catch (Exception ignored) { }
         return out;
@@ -350,46 +312,6 @@ public class CompanionService extends Service {
         }
     }
 
-    public static boolean showReminderNotification(Context ctx, String title, String message) {
-        try {
-            if (Build.VERSION.SDK_INT >= 33 && ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false;
-            NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-            if (nm == null) return false;
-            String safeTitle = (title == null || title.trim().isEmpty()) ? "掌心窗提醒" : title.trim();
-            String safeMessage = (message == null || message.trim().isEmpty()) ? (AppPrefs.userName(ctx) + "，看一眼这里。") : message.trim();
-
-            Intent detail = new Intent(ctx, ReminderActivity.class);
-            detail.putExtra("title", safeTitle);
-            detail.putExtra("message", safeMessage);
-            detail.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            PendingIntent pi = PendingIntent.getActivity(ctx, (int)(System.currentTimeMillis() % 100000), detail, Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT : PendingIntent.FLAG_UPDATE_CURRENT);
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                NotificationChannel channel = new NotificationChannel(REMINDER_CHANNEL_ID, "掌心窗悬浮横幅提醒", NotificationManager.IMPORTANCE_HIGH);
-                channel.setDescription("像微信消息一样从顶部弹出的横幅提醒；点开后可进入详情页。");
-                channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-                channel.enableVibration(true);
-                nm.createNotificationChannel(channel);
-            }
-            Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? new Notification.Builder(ctx, REMINDER_CHANNEL_ID) : new Notification.Builder(ctx);
-            Notification n = builder
-                    .setContentTitle(safeTitle)
-                    .setContentText(safeMessage)
-                    .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentIntent(pi)
-                    .setAutoCancel(true)
-                    .setCategory(Notification.CATEGORY_MESSAGE)
-                    .setPriority(Notification.PRIORITY_HIGH)
-                    .setDefaults(Notification.DEFAULT_SOUND | Notification.DEFAULT_VIBRATE)
-                    .setWhen(System.currentTimeMillis())
-                    .setShowWhen(true)
-                    .build();
-            nm.notify((int)(System.currentTimeMillis() % Integer.MAX_VALUE), n);
-            DebugState.append(ctx, "悬浮横幅通知已发送：" + safeTitle);
-            return true;
-        } catch (Exception e) { DebugState.append(ctx, "悬浮横幅通知异常：" + ScreenshotService.shortMsg(e)); return false; }
-    }
-
     private static boolean setAlarm(Context ctx, int hour, int minute, String message, boolean vibrate, boolean skipUi) {
         if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return false;
         try {
@@ -409,9 +331,6 @@ public class CompanionService extends Service {
     private static void uploadState(String serverUrl, String token, Context ctx) throws Exception {
         JSONObject state = LifeState.collect(ctx);
         postJson(serverUrl + "/api/device/state", token, state);
-        ActiveReminder.evaluate(ctx, state);
-        HomeMode.evaluate(ctx, state);
-        GuidianState.evaluate(ctx, state);
     }
     private static void uploadState(String serverUrl, String token) throws Exception {
         Context ctx = ScreenshotService.getInstance();

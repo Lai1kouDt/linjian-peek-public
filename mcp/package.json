@@ -1,11 +1,12 @@
 {
-  "name": "linjian-unified-mcp",
-  "version": "0.1.6",
+  "name": "linjian-lean-mcp",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Unified MCP server for 掌心窗: screenshot, phone control, alarm, notification.",
+  "description": "掌心窗精简 MCP",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "check": "node --check server.js"
   },
   "engines": {
     "node": ">=20"

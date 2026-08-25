@@ -89,7 +89,7 @@ public class ScreenshotService extends AccessibilityService {
         super.onServiceConnected();
         instance = this;
         boolean clearedLegacyServer = AppPrefs.migrateLegacyConfig(this);
-        DebugState.append(this, "无障碍服务已连接：截图/读屏/节点坐标/应用门禁可用 v0.3.4.6");
+        DebugState.append(this, "无障碍服务已连接：状态、截图与控制可用 v0.4.0-lean");
         if (clearedLegacyServer) DebugState.append(this, "检测到旧版默认服务器地址。请部署自己的 Render 服务后填写新的服务器地址。");
         watchdog = new Handler(Looper.getMainLooper());
         watchdog.postDelayed(watchdogTick, 15000);
@@ -102,7 +102,6 @@ public class ScreenshotService extends AccessibilityService {
         if (pkg != null) currentPackage = pkg.toString();
         int t = event.getEventType();
         if (t == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || t == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED || t == AccessibilityEvent.TYPE_VIEW_SCROLLED) updateScreenText();
-        if (t == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkg != null) AppGate.onForegroundPackage(this, pkg.toString());
     }
     @Override public void onInterrupt() { DebugState.append(this, "无障碍服务被中断"); }
 

@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlparse
 DEFAULT_PORT = 8513
 DEFAULT_KEEP = 3
 MAX_UPLOAD_BYTES = 24 * 1024 * 1024
-VERSION = "0.3.5.0-public"
+VERSION = "0.4.0-lean"
 DEFAULT_DEVICE = os.environ.get("LINJIAN_DEFAULT_DEVICE", "android-phone")
 
 ERR_BAD_TOKEN = "LINJIAN_ERR_BAD_TOKEN"
@@ -45,7 +45,7 @@ KNOWN_APPS = {
     "Speedcat": "", "speedcat": "",
 }
 SENSITIVE_PACKAGES = {"com.eg.android.AlipayGphone", "com.tencent.mm.plugin.wallet"}
-ALLOWED_ACTIONS = {"noop", "peek", "open_app", "home", "back", "recents", "tap", "swipe", "set_alarm", "send_notification", "run_sequence", "save_known_app", "get_screen_nodes", "tap_text", "input_text", "lock_app", "unlock_app", "temporary_unlock_app", "extend_lock", "deny_unlock_request", "get_lock_state", "set_emergency_passphrase", "add_locked_app", "remove_locked_app", "list_lockable_apps", "get_guidian_state", "set_guidian_config", "trigger_guidian", "mark_guidian_returned"}
+ALLOWED_ACTIONS = {"noop", "peek", "open_app", "home", "back", "recents", "tap", "swipe", "set_alarm", "run_sequence", "get_screen_nodes", "tap_text", "input_text", "wait"}
 
 
 def load_dotenv(path: Path) -> None:
@@ -178,7 +178,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         qs = parse_qs(parsed.query)
         if path in ("/", "/health"):
-            self._json(200, {"ok": True, "service": "linjian-unified", "name": "掌心窗", "version": VERSION, "tools": sorted(ALLOWED_ACTIONS), "guidian": True})
+            self._json(200, {"ok": True, "service": "linjian-unified", "name": "掌心窗", "version": VERSION, "tools": sorted(ALLOWED_ACTIONS), "guidian": False})
             return
         if path in ("/api/update.json", "/update.json"):
             payload = load_update_info()
@@ -213,23 +213,12 @@ class Handler(BaseHTTPRequestHandler):
             device_id = qs.get("device_id", [DEFAULT_DEVICE])[0] or DEFAULT_DEVICE
             state = self.state.device_states.get(device_id)
             self._json(200, {"ok": True, "device_id": device_id, "state": state, "life_state": state}); return
-        if path == "/api/guidian_state":
-            if not self._require_token(): return
-            device_id = qs.get("device_id", [DEFAULT_DEVICE])[0] or DEFAULT_DEVICE
-            st = self.state.device_states.get(device_id) or {}
-            guidian = st.get("guidian_state") or {}
-            self._json(200, {"ok": True, "device_id": device_id, "guidian_state": guidian}); return
         if path == "/api/command/status":
             if not self._require_token(): return
             cid = qs.get("id", [""])[0]
             with self.state.commands_lock:
                 found = self.state.command_history.get(cid) or next((c for c in self.state.commands if c.get("id") == cid), None)
             self._json(200, {"ok": bool(found), "command": found}); return
-        if path == "/api/appgate/unlock_requests":
-            if not self._require_token(): return
-            self._json(200, {"ok": True, "requests": self.state.unlock_requests[-50:]}); return
-        if path == "/api/known_apps":
-            self._json(200, {"ok": True, "apps": KNOWN_APPS}); return
         self._json(404, {"ok": False, "error": ERR_BAD_METHOD})
 
     def do_POST(self) -> None:
@@ -262,12 +251,6 @@ class Handler(BaseHTTPRequestHandler):
                     cmd["result"] = data.get("result", "")
                     cmd["report"] = data
             self._json(200, {"ok": True, "report": data, "command": self.state.command_history.get(cid)}); return
-        if path == "/api/appgate/unlock_request":
-            if not self._require_token(): return
-            data = self._read_json(); data.setdefault("created_at", now_iso())
-            self.state.unlock_requests.append(data)
-            self.state.unlock_requests = self.state.unlock_requests[-50:]
-            self._json(200, {"ok": True, "request": data, "count": len(self.state.unlock_requests)}); return
         if path == "/api/screenshot":
             if not self._require_token(): return
             self._handle_screenshot(); return

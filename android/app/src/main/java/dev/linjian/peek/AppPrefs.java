@@ -12,9 +12,10 @@ import java.util.Map;
 public class AppPrefs {
     public static final String PREFS = "linjian_peek";
     public static final String KEY_SERVER = "server_url";
-    public static final String APP_VERSION_NAME = "0.3.5.1";
-    public static final int APP_VERSION_CODE = 30501;
+    public static final String APP_VERSION_NAME = "0.4.0-lean";
+    public static final int APP_VERSION_CODE = 40000;
     public static final String KEY_TOKEN = "token";
+    public static final String KEY_LOCK_PACKAGE = "lock_screen_package";
     public static final String KEY_DEVICE = "device_id";
     public static final String KEY_INTERVAL = "poll_interval_ms";
     public static final String KEY_CITY = "life_city";
@@ -201,6 +202,10 @@ public class AppPrefs {
         String raw = app == null ? "" : app.trim();
         if (isPackageLike(raw)) return raw;
         String key = raw.toLowerCase(Locale.US);
+        if ("一键锁屏".equals(raw) || "锁屏".equals(raw) || "lockscreen".equals(key) || "lock screen".equals(key)) {
+            String saved = get(ctx).getString(KEY_LOCK_PACKAGE, get(ctx).getString("pkg_一键锁屏", ""));
+            return isPackageLike(saved) ? saved.trim() : "";
+        }
         String def;
         switch (key) {
             case "xiaohongshu": case "xhs": case "小红书": def = "com.xingin.xhs"; break;
