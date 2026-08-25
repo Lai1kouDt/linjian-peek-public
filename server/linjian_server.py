@@ -178,7 +178,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         qs = parse_qs(parsed.query)
         if path in ("/", "/health"):
-            self._json(200, {"ok": True, "service": "linjian-unified", "name": "掌心窗", "version": VERSION, "tools": sorted(ALLOWED_ACTIONS), "guidian": False})
+            self._json(200, {"ok": True, "service": "linjian-lean", "name": "掌心窗", "version": VERSION, "tools": sorted(ALLOWED_ACTIONS)})
             return
         if path in ("/api/update.json", "/update.json"):
             payload = load_update_info()
