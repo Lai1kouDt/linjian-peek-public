@@ -2,7 +2,7 @@
 """掌心窗 v0.3.5.0 unified server.
 
 零依赖标准库版，负责：
-1. 给手机端下发 peek / open_app / back / home / recents / tap / swipe / set_alarm / send_notification 命令；
+1. 给手机端下发状态、截图、无障碍与原生闹钟命令；
 2. 接收手机端上传的截图；
 3. 保存手机端最近状态；
 4. 提供 /api/latest 与 /api/latest.json 给 MCP 读取。

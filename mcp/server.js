@@ -239,7 +239,8 @@ function makeServer() {
 
 
   const stepSchema = z.object({
-    action: z.string().describe("动作：open_app/home/back/recents/tap/swipe/peek/send_notification/set_alarm/wait/get_life_state"),
+    action: z.enum(["open_app", "home", "back", "recents", "tap", "tap_text", "swipe", "input_text", "peek", "set_alarm", "wait"])
+      .describe("允许的动态无障碍动作"),
     label: z.string().default(""),
     app: z.string().default(""),
     package: z.string().default(""),
@@ -247,8 +248,7 @@ function makeServer() {
     x1: z.number().default(0), y1: z.number().default(0), x2: z.number().default(0), y2: z.number().default(0),
     duration: z.number().int().default(350),
     wait_ms: z.number().int().min(0).max(5000).default(800),
-    title: z.string().default("掌心窗提醒"),
-    message: z.string().default("宝宝，看一眼这里。"),
+    message: z.string().default("掌心窗闹钟"),
     expect_app: z.string().default(""),
     target_text: z.string().default(""),
     text: z.string().default(""),
@@ -257,7 +257,7 @@ function makeServer() {
     append: z.boolean().default(false)
   }).passthrough();
 
-  server.tool("run_sequence", "一次执行多步手机动作，并让手机端返回每一步成功/失败日志。适合强制抱回、最近任务切换、通知后打开 App。", {
+  server.tool("run_sequence", "动态执行多步无障碍动作并返回逐步结果；不包含固定预设和通知动作。", {
     device_id: z.string().default(DEFAULT_DEVICE),
     steps: z.array(stepSchema).min(1).max(12),
     stop_on_error: z.boolean().default(true),
