@@ -41,6 +41,13 @@ public class DebugState {
         return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_DEBUG, "等待调试信息…");
     }
 
+    public static void clear(Context ctx) {
+        if (ctx == null) return;
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .remove(KEY_DEBUG)
+                .apply();
+    }
+
     private static String now() {
         return new SimpleDateFormat("HH:mm:ss", Locale.CHINA).format(new Date());
     }
