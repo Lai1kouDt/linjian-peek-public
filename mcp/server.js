@@ -50,6 +50,13 @@ function effectiveLinjianUrl() {
 }
 const LINJIAN_TOKEN = process.env.LINJIAN_TOKEN || "";
 const DEFAULT_DEVICE = process.env.LINJIAN_DEFAULT_DEVICE || "android-phone";
+const MCP_VERSION = "0.3.9-lite.2";
+const LITE_TOOL_NAMES = new Set([
+  "linjian_status",
+  "get_phone_state",
+  "phone_screen_off",
+  "set_alarm"
+]);
 
 // v0.3.6.6：公开 MCP 经常被平台限制在 20 秒内返回。
 // 状态读取、活动记录和命令轮询都要快速失败，避免整条工具链被 Render 冷启动、网络抖动或手机端确认弹窗拖到超时。
@@ -821,6 +828,48 @@ function parsePhoneResult(command) {
   try { return JSON.parse(command.result); } catch { return command.result; }
 }
 
+async function runLiteCommand(payload, waitSeconds = DEFAULT_COMMAND_WAIT_SECONDS) {
+  const queued = await postCommand(payload);
+  const id = queued?.command?.id;
+  const observed = id ? await waitCommand(id, waitSeconds) : null;
+  const command = observed?.command || queued?.command || null;
+  const phoneResult = parsePhoneResult(command);
+  const terminal = command?.status === "completed" || command?.status === "failed";
+  const phoneOk = typeof phoneResult === "object" && phoneResult !== null && "ok" in phoneResult
+    ? Boolean(phoneResult.ok)
+    : command?.status === "completed";
+  const confirmed = terminal && command?.status === "completed" && typeof phoneResult === "object" && phoneResult !== null
+    ? Boolean(phoneResult.confirmed)
+    : false;
+  return {
+    ok: terminal && command?.status === "completed" && phoneOk,
+    command_id: id || null,
+    queued: Boolean(id),
+    completed: terminal,
+    confirmed,
+    status: command?.status || "not_queued",
+    phone_result: phoneResult,
+    timeout: Boolean(id) && !terminal
+  };
+}
+
+function decoratePhoneState(data) {
+  const state = data?.state || data?.life_state || null;
+  const updatedAtMs = Number(state?.updated_at_ms || 0);
+  const heartbeatMs = Number(state?.last_heartbeat_ms || 0);
+  const newestSignalMs = Math.max(updatedAtMs, heartbeatMs);
+  const ageMs = newestSignalMs > 0 ? Math.max(0, Date.now() - newestSignalMs) : null;
+  const onlineLimitMs = Math.max(30000, Number(state?.poll_interval_ms || 3000) * 5);
+  return {
+    ...data,
+    device_online: ageMs !== null && ageMs <= onlineLimitMs,
+    last_signal_age_ms: ageMs,
+    app_version: state?.app_version || null,
+    reconnecting: Boolean(state?.reconnecting),
+    connection_failures: Number(state?.consecutive_poll_failures || 0)
+  };
+}
+
 async function runWalletCommand(action, args = {}, waitSeconds = DEFAULT_COMMAND_WAIT_SECONDS) {
   const device_id = args.device_id || DEFAULT_DEVICE;
   const payload = { action, ...args, device_id };
@@ -1003,7 +1052,7 @@ function makeWalletTakeoutServer() {
 }
 
 function makeServer() {
-  const server = new McpServer({ name: "掌心窗", version: "0.3.8.8" });
+  const server = new McpServer({ name: "掌心窗 Lite", version: MCP_VERSION });
   const commandBackedTools = new Set([
     "peek_screen", "get_screen_nodes", "tap_text", "input_text", "draft_xhs_comment", "xhs_comment", "send_visible_comment_after_confirmation",
     "add_guardian_calendar_event", "care_action", "trigger_guidian", "mark_guidian_returned",
@@ -1019,6 +1068,9 @@ function makeServer() {
   const originalTool = server.tool.bind(server);
   server.tool = (...args) => {
     const toolName = String(args[0] || "");
+    // Lite 版只向 AI 暴露经过确认的四项核心能力。旧功能实现暂时保留在
+    // 源码中，便于验证期间随时回退，但不会进入 MCP tools/list。
+    if (!LITE_TOOL_NAMES.has(toolName)) return undefined;
     const callbackIndex = args.map((x) => typeof x).lastIndexOf("function");
     if (callbackIndex >= 0 && toolName !== "get_activity_events" && toolName !== "add_activity_event" && !commandBackedTools.has(toolName)) {
       const callback = args[callbackIndex];
@@ -1173,26 +1225,42 @@ function makeServer() {
     ] };
   });
 
-  server.tool("linjian_status", "检查掌心窗后端是否在线，以及 MCP 是否配置了 LINJIAN_URL 和 LINJIAN_TOKEN。当用户在聊天里提到掌心窗报错、出错、有点问题、连接不上、没反应、配置异常、Render/MCP/Token/URL 相关问题时，陪伴对象应主动调用。", {}, async () => {
+  server.tool("linjian_status", "检查掌心窗 Lite 的后端、手机心跳、自动重连状态和各端版本。不读取截图。", {
+    device_id: z.string().default(DEFAULT_DEVICE)
+  }, async ({ device_id = DEFAULT_DEVICE }) => {
     const configErrors = [];
     if (!LINJIAN_URL_CANDIDATES.length) configErrors.push("Missing env LINJIAN_URL");
     if (!LINJIAN_TOKEN) configErrors.push("Missing env LINJIAN_TOKEN");
-    const health = configErrors.length
-      ? { ok: false, error: configErrors.join("; ") }
-      : await linjianFetch("/health").then((r) => r.json()).catch((e) => ({ ok: false, error: String(e) }));
-    const latest = configErrors.length ? null : await latestInfo().catch(() => null);
-    return { content: [{ type: "text", text: JSON.stringify({
-      ok: true,
+    let health = { ok: false, error: configErrors.join("; ") || "not_checked" };
+    let phone = { ok: false, device_id, state: null };
+    if (!configErrors.length) {
+      [health, phone] = await Promise.all([
+        linjianFetch("/health", { timeout_ms: QUICK_FETCH_TIMEOUT_MS }).then((r) => r.json()).catch((e) => ({ ok: false, error: String(e) })),
+        linjianFetch(`/api/device/state?device_id=${encodeURIComponent(device_id)}`, { timeout_ms: QUICK_FETCH_TIMEOUT_MS }).then((r) => r.json()).catch((e) => ({ ok: false, error: String(e), device_id, state: null }))
+      ]);
+    }
+    const decorated = decoratePhoneState(phone);
+    return textResult({
+      ok: Boolean(health?.ok) && decorated.device_online && !configErrors.length,
       linjian_url: effectiveLinjianUrl(),
-      configured_linjian_url: RAW_LINJIAN_URL,
-      fallback_linjian_urls: LINJIAN_URL_CANDIDATES.filter((u) => u !== RAW_LINJIAN_URL),
       has_url: Boolean(LINJIAN_URL_CANDIDATES.length),
       has_token: Boolean(LINJIAN_TOKEN),
       config_errors: configErrors,
-      health,
-      has_latest: Boolean(latest),
-      latest
-    }, null, 2) }] };
+      versions: {
+        mcp: MCP_VERSION,
+        backend: health?.version || null,
+        android: decorated.app_version
+      },
+      backend: health,
+      backend_ok: Boolean(health?.ok),
+      device_id,
+      device_online: decorated.device_online,
+      last_signal_age_ms: decorated.last_signal_age_ms,
+      reconnecting: decorated.reconnecting,
+      connection_failures: decorated.connection_failures,
+      last_poll_error: decorated.state?.last_poll_error || "",
+      last_heartbeat_ms: decorated.state?.last_heartbeat_ms || 0
+    });
   });
 
   server.tool("get_window_whisper", "读取掌心窗陪伴页当前的共同窗语，包括内容、最后修改者、修改时间和版本。当用户问最近一句话、窗语写了什么、谁改过时使用。", {}, async () => {
@@ -1225,13 +1293,13 @@ function makeServer() {
     app_name: z.string().default(""), package_name: z.string().default(""), action: z.string().default(""), status: z.string().default("completed"), metadata_json: z.any().optional()
   }, async (event) => textResult(await addActivityEvent(event) || { ok: false, error: "activity_event_write_failed" }));
 
-  server.tool("get_phone_state", "用于陪伴对象主动确认用户当前现实状态。读取服务器缓存的最近手机状态，快速返回 current_package、screen_text、accessibility_ready；不会等待手机实时刷新，避免 20 秒工具超时。", { device_id: z.string().default(DEFAULT_DEVICE) }, async ({ device_id = DEFAULT_DEVICE }) => {
+  server.tool("get_phone_state", "读取掌心窗 Lite 最近上报的基础状态：屏幕亮灭、电量、充电、连接心跳、无障碍和后台服务状态。不读取页面文字、不截图；前台 App 默认不上报。", { device_id: z.string().default(DEFAULT_DEVICE) }, async ({ device_id = DEFAULT_DEVICE }) => {
     try {
       const res = await linjianFetch(`/api/device/state?device_id=${encodeURIComponent(device_id)}`, { timeout_ms: QUICK_FETCH_TIMEOUT_MS });
       const data = await res.json();
       // 状态读取不能被活动日志拖慢；记录失败不影响本次结果。
       postCompanionAction("get_phone_state", { device_id }).catch(() => null);
-      return textResult({ ...data, mcp_note: "已快速读取服务器缓存状态；如果 state/life_state 为 null，请保持掌心窗前台或允许后台运行后重试。" });
+      return textResult({ ...decoratePhoneState(data), mcp_note: "读取的是手机最近一次心跳缓存；device_online=false 时不要把旧状态当成当前状态。" });
     } catch (error) {
       return textResult({ ok: false, error: "phone_state_fetch_failed", message: "读取手机状态超时或后端暂时不可达；请确认 Render 服务已唤醒、MCP URL/Token 正确、掌心窗允许后台运行。", detail: String(error?.message || error).slice(0, 500) });
     }
@@ -1878,10 +1946,13 @@ function makeServer() {
     device_id: z.string().default(DEFAULT_DEVICE),
     wait_seconds: z.number().int().min(3).max(20).default(8)
   }, async ({ device_id = DEFAULT_DEVICE, wait_seconds = 8 }) => {
-    const result = await postCommand({ action: "screen_off", device_id });
-    const id = result?.command?.id;
-    const observed = id ? await waitCommand(id, wait_seconds) : null;
-    return { content: [{ type: "text", text: JSON.stringify({ queued: result, observed_status: observed?.command || null }, null, 2) }] };
+    const result = await runLiteCommand({ action: "screen_off", device_id }, wait_seconds);
+    return textResult({
+      ...result,
+      lock_success: Boolean(result.phone_result?.lock_success),
+      screen_off: result.phone_result?.screen_off === true,
+      note: result.completed ? "只有 lock_success=true 且 screen_off=true 才表示已确认锁屏。" : "手机尚未回传结果，不能声称已经锁屏。"
+    });
   });
 
 
@@ -1894,12 +1965,46 @@ function makeServer() {
     return { content: [{ type: "text", text: JSON.stringify({ ...result, note: "若手机未弹出通知，请在系统设置中允许掌心窗发送通知。" }, null, 2) }] };
   });
 
-  server.tool("set_alarm", "设置系统闹钟。可用于陪伴对象主动安排睡觉、休息、学习、出门、喝水、计划执行或生活提醒。当用户提到“一会儿要做/几点要去/等下提醒/今天计划”等相近表达时主动调用。hour 为 0-23，minute 为 0-59。", {
-    hour: z.number().int().min(0).max(23), minute: z.number().int().min(0).max(59), message: z.string().default("掌心窗闹钟"), vibrate: z.boolean().default(true), skip_ui: z.boolean().default(true), device_id: z.string().default(DEFAULT_DEVICE)
-  }, async ({ hour, minute, message = "掌心窗闹钟", vibrate = true, skip_ui = true, device_id = DEFAULT_DEVICE }) => {
-    const result = await postCommand({ action: "set_alarm", device_id, payload: { hour, minute, message, vibrate, skip_ui } });
-    await postCompanionAction("set_alarm", { summary: `设置了 ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} 的闹钟` });
-    return { content: [{ type: "text", text: JSON.stringify({ ...result, note: "部分手机系统可能仍会弹出闹钟 App 确认界面。" }, null, 2) }] };
+  server.tool("set_alarm", "管理掌心窗闹钟。operation=set 可一次提交 alarms 数组；operation=list 查看掌心窗发出的请求记录；delete/disable 按 alarm_id 或时间向系统请求关闭一次性闹钟。系统没有完整列表和结果回读，绝不伪报成功。", {
+    operation: z.enum(["set", "list", "delete", "disable"]).default("set"),
+    hour: z.number().int().min(0).max(23).optional(),
+    minute: z.number().int().min(0).max(59).optional(),
+    alarm_id: z.string().default(""),
+    message: z.string().default("掌心窗闹钟"),
+    alarms: z.array(z.object({
+      hour: z.number().int().min(0).max(23),
+      minute: z.number().int().min(0).max(59),
+      message: z.string().default("掌心窗闹钟"),
+      vibrate: z.boolean().default(true),
+      skip_ui: z.boolean().default(true)
+    })).max(10).default([]),
+    vibrate: z.boolean().default(true),
+    skip_ui: z.boolean().default(true),
+    open_manager: z.boolean().default(false),
+    device_id: z.string().default(DEFAULT_DEVICE),
+    wait_seconds: z.number().int().min(3).max(20).default(10)
+  }, async ({ operation = "set", hour, minute, alarm_id = "", message = "掌心窗闹钟", alarms = [], vibrate = true, skip_ui = true, open_manager = false, device_id = DEFAULT_DEVICE, wait_seconds = 10 }) => {
+    if (operation === "set" && alarms.length === 0 && (!Number.isInteger(hour) || !Number.isInteger(minute))) {
+      return textResult({ ok: false, completed: true, confirmed: false, error: "hour_and_minute_or_alarms_required" });
+    }
+    const payload = { operation, alarm_id, message, alarms, vibrate, skip_ui, open_manager };
+    if (Number.isInteger(hour)) payload.hour = hour;
+    if (Number.isInteger(minute)) payload.minute = minute;
+    const result = await runLiteCommand({ action: "set_alarm", device_id, payload }, wait_seconds);
+    if (operation === "set" && result.phone_result?.all_requests_dispatched) {
+      const labels = (result.phone_result?.alarms || []).map((item) => `${String(item.hour).padStart(2, "0")}:${String(item.minute).padStart(2, "0")}`).join(" / ");
+      postCompanionAction("set_alarm", { summary: `已把 ${labels || "闹钟"} 请求交给系统闹钟 App`, status: "requested" }).catch(() => null);
+    }
+    return textResult({
+      ...result,
+      alarm_created: result.phone_result?.all_created_confirmed === true,
+      request_dispatched: result.phone_result?.all_requests_dispatched === true,
+      note: operation === "set"
+        ? "request_dispatched=true 只代表系统闹钟 App 已接收请求；alarm_created=false 表示 Android 无公开回读接口，不能冒充已确认创建。"
+        : operation === "list"
+          ? "list 只包含掌心窗自己的请求记录，不是系统闹钟 App 的完整实时列表。"
+          : "dismiss_requested=true 只代表系统收到关闭请求；alarm_disabled 仍为 false 时不能声称已经关闭。"
+    });
   });
 
 
@@ -2180,43 +2285,27 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: "32mb" }));
-app.get("/", (_req, res) => res.type("text/plain").send("掌心窗 unified MCP is running. Use /mcp for Streamable HTTP, or /sse for SSE."));
+app.get("/", (_req, res) => res.type("text/plain").send("掌心窗 Lite MCP is running. Use /mcp for Streamable HTTP, or /sse for SSE."));
 app.get("/health", (_req, res) => res.json({
   ok: true,
-  service: "linjian-public-mcp",
-  version: "0.3.8.8",
+  service: "linjian-lite-mcp",
+  version: MCP_VERSION,
+  schema_mode: "lite",
   has_url: Boolean(LINJIAN_URL_CANDIDATES.length),
   has_token: Boolean(LINJIAN_TOKEN),
   configured_linjian_url: RAW_LINJIAN_URL || "",
   effective_linjian_url: effectiveLinjianUrl(),
   fallback_linjian_urls: LINJIAN_URL_CANDIDATES.filter((u) => u !== RAW_LINJIAN_URL),
-  guardian_day_tools: true,
-  diary_tools: true,
-  diary_rename_fix: true,
-  diary_write_fallback: true,
-  diary_storage: "phone_local",
-  diary_annotation_tools: true,
-  diary_annotation_ui: "margin_notes",
-  focus_tools: true,
-  focus_tool_names: ["get_focus_status", "start_focus_mode", "end_focus_mode", "set_focus_plan", "reply_focus_request", "approve_focus_unlock", "deny_focus_unlock"],
-  mcp_wallet_endpoint: "/mcp-wallet",
-  schema_exposure_fix: true,
-  focus_schema_exposure_fix: true,
-  priority_tool: "wallet_takeout_action",
-  wallet_takeout_tool_count: WALLET_TAKEOUT_ACTIONS.size,
-  wallet_takeout_tools: Array.from(WALLET_TAKEOUT_ACTIONS),
-  stability_note: "v0.3.8.8 同步公开版版本信息；普通 /mcp 提前注册统一入口，新增 /mcp-wallet 专用端点，并把专注模式工具前置注册，兼容部分客户端不暴露新增工具的问题。"
+  tool_count: LITE_TOOL_NAMES.size,
+  tools: Array.from(LITE_TOOL_NAMES),
+  stability_note: "Lite 第一阶段：仅暴露连接检查、基础手机状态、锁屏和闹钟。旧模块暂留源码但不进入 MCP schema。"
 }));
 app.post("/mcp", async (req, res) => {
   try { const server = makeServer(); const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined }); res.on("close", () => transport.close()); await server.connect(transport); await transport.handleRequest(req, res, req.body); }
   catch (err) { console.error(err); if (!res.headersSent) res.status(500).json({ jsonrpc: "2.0", error: { code: -32603, message: String(err?.message || err) }, id: null }); }
 });
 app.get("/mcp", (_req, res) => res.status(405).json({ ok: false, error: "Use POST /mcp for Streamable HTTP MCP." }));
-app.post("/mcp-wallet", async (req, res) => {
-  try { const server = makeWalletTakeoutServer(); const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined }); res.on("close", () => transport.close()); await server.connect(transport); await transport.handleRequest(req, res, req.body); }
-  catch (err) { console.error(err); if (!res.headersSent) res.status(500).json({ jsonrpc: "2.0", error: { code: -32603, message: String(err?.message || err) }, id: null }); }
-});
-app.get("/mcp-wallet", (_req, res) => res.status(405).json({ ok: false, error: "Use POST /mcp-wallet for wallet/takeout Streamable HTTP MCP.", endpoint: "/mcp-wallet" }));
+app.all("/mcp-wallet", (_req, res) => res.status(404).json({ ok: false, error: "This endpoint is not available in 掌心窗 Lite." }));
 const sseTransports = new Map();
 app.get("/sse", async (_req, res) => {
   try { const transport = new SSEServerTransport("/messages", res); sseTransports.set(transport.sessionId, transport); res.on("close", () => { sseTransports.delete(transport.sessionId); transport.close(); }); await makeServer().connect(transport); }

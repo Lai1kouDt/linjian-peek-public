@@ -11,12 +11,13 @@ import java.util.Map;
 
 public class AppPrefs {
     public static final String PREFS = "linjian_peek";
-    public static final String APP_VERSION_NAME = "0.3.8.8";
-    public static final int APP_VERSION_CODE = 30808;
+    public static final String APP_VERSION_NAME = "0.3.9-lite.2";
+    public static final int APP_VERSION_CODE = 30902;
     public static final String KEY_SERVER = "server_url";
     public static final String KEY_TOKEN = "token";
     public static final String KEY_DEVICE = "device_id";
     public static final String KEY_INTERVAL = "poll_interval_ms";
+    public static final String KEY_REPORT_FOREGROUND_APP = "lite_report_foreground_app";
     public static final int DEFAULT_POLL_INTERVAL_MS = 3000;
     public static final int MIN_POLL_INTERVAL_MS = 2500;
     public static final int MAX_POLL_INTERVAL_MS = 15000;
@@ -90,6 +91,9 @@ public class AppPrefs {
         if (saved < MIN_POLL_INTERVAL_MS) return DEFAULT_POLL_INTERVAL_MS;
         if (saved > MAX_POLL_INTERVAL_MS) return MAX_POLL_INTERVAL_MS;
         return saved;
+    }
+    public static boolean reportForegroundApp(Context ctx) {
+        return get(ctx).getBoolean(KEY_REPORT_FOREGROUND_APP, false);
     }
 
     /** 把旧公开版称呼和回家模式观察列表迁移到通用模板配置。 */

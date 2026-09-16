@@ -49,7 +49,6 @@ mv app.tmp.apk app.unsigned.apk
 
 echo "=== Loading fixed PUBLIC signing key ==="
 PUBLIC_KS=$PROJECT/signing/zhangxinchuang-public-release.p12
-PUBLIC_KS_PASSWORD=${PUBLIC_KS_PASSWORD:-zhangxinchuang-public-30600}
 if [ ! -f "$PUBLIC_KS" ]; then
     echo "Public release keystore not found: $PUBLIC_KS"
     exit 1
@@ -58,22 +57,29 @@ fi
 echo "=== Aligning ==="
 $BUILD_TOOLS/zipalign -f 4 app.unsigned.apk app.aligned.apk
 
-echo "=== Signing public APK ==="
-$BUILD_TOOLS/apksigner sign \
-    --ks "$PUBLIC_KS" \
-    --ks-type PKCS12 \
-    --ks-pass pass:"$PUBLIC_KS_PASSWORD" \
-    --key-pass pass:"$PUBLIC_KS_PASSWORD" \
-    --ks-key-alias zhangxinchuang-public \
-    --out "$PROJECT/Zhangxinchuang-public-v0.3.8.8.apk" \
-    app.aligned.apk
+if [ -n "${PUBLIC_KS_PASSWORD:-}" ]; then
+    echo "=== Signing public APK ==="
+    $BUILD_TOOLS/apksigner sign \
+        --ks "$PUBLIC_KS" \
+        --ks-type PKCS12 \
+        --ks-pass env:PUBLIC_KS_PASSWORD \
+        --key-pass env:PUBLIC_KS_PASSWORD \
+        --ks-key-alias zhangxinchuang-public \
+        --out "$PROJECT/PalmWindow-Lite-v0.3.9-lite.2.apk" \
+        app.aligned.apk
 
-echo "=== Verifying fixed public signature ==="
-VERIFY_OUTPUT=$($BUILD_TOOLS/apksigner verify --verbose --print-certs "$PROJECT/Zhangxinchuang-public-v0.3.8.8.apk")
-echo "$VERIFY_OUTPUT"
-echo "$VERIFY_OUTPUT" | grep -qi "aea75c9b2b5f5c42d56b72d4a69a79a38e1c57f27db021017be8656bc8f002fb"
+    echo "=== Verifying fixed public signature ==="
+    VERIFY_OUTPUT=$($BUILD_TOOLS/apksigner verify --verbose --print-certs "$PROJECT/PalmWindow-Lite-v0.3.9-lite.2.apk")
+    echo "$VERIFY_OUTPUT"
+    echo "$VERIFY_OUTPUT" | grep -qi "aea75c9b2b5f5c42d56b72d4a69a79a38e1c57f27db021017be8656bc8f002fb"
+    OUTPUT_APK="$PROJECT/PalmWindow-Lite-v0.3.9-lite.2.apk"
+else
+    echo "=== Signing skipped: PUBLIC_KS_PASSWORD is not configured ==="
+    OUTPUT_APK="$PROJECT/PalmWindow-Lite-v0.3.9-lite.2-unsigned.apk"
+    cp app.aligned.apk "$OUTPUT_APK"
+fi
 
 echo ""
 echo "=== Done ==="
-echo "APK: $PROJECT/Zhangxinchuang-public-v0.3.8.8.apk"
-ls -lh "$PROJECT/Zhangxinchuang-public-v0.3.8.8.apk"
+echo "APK: $OUTPUT_APK"
+ls -lh "$OUTPUT_APK"
