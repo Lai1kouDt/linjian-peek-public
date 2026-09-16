@@ -50,7 +50,7 @@ public class ScreenshotService extends AccessibilityService {
         @Override public void run() {
             try {
                 SharedPreferences prefs = getSharedPreferences(AppPrefs.PREFS, MODE_PRIVATE);
-                String url = AppPrefs.server(ScreenshotService.this);
+                String url = prefs.getString(AppPrefs.KEY_SERVER, "");
                 String tk = prefs.getString(AppPrefs.KEY_TOKEN, "");
                 boolean userStopped = prefs.getBoolean("user_stopped", false);
                 if (!CompanionService.isRunning() && !userStopped && !url.isEmpty() && !tk.isEmpty()) {
@@ -61,7 +61,7 @@ public class ScreenshotService extends AccessibilityService {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(i); else startService(i);
                 }
             } catch (Exception e) {
-                DebugState.append(ScreenshotService.this, "看门狗异常：" + friendlyNetMsg(e));
+                DebugState.append(ScreenshotService.this, "看门狗异常：" + shortMsg(e));
             }
             if (watchdog != null) watchdog.postDelayed(this, 60000);
         }
@@ -71,26 +71,27 @@ public class ScreenshotService extends AccessibilityService {
         @Override public void run() {
             try {
                 SharedPreferences prefs = getSharedPreferences(AppPrefs.PREFS, MODE_PRIVATE);
-                String url = normalizeUrl(AppPrefs.server(ScreenshotService.this));
+                String url = normalizeUrl(prefs.getString(AppPrefs.KEY_SERVER, ""));
                 String tk = prefs.getString(AppPrefs.KEY_TOKEN, "");
                 boolean userStopped = prefs.getBoolean("user_stopped", true);
-                if (!userStopped && !url.isEmpty() && !tk.isEmpty()) {
+                if (!userStopped && !url.isEmpty() && !tk.isEmpty() && !CompanionService.isRunning()) {
                     String body = pollServerFromAccessibility(url, tk);
                     if (body != null && body.length() > 0) CompanionService.handleCommandBody(ScreenshotService.this, body, url, tk);
                 }
             } catch (Exception e) {
-                DebugState.append(ScreenshotService.this, "无障碍后台轮询异常：" + friendlyNetMsg(e));
+                DebugState.append(ScreenshotService.this, "无障碍后台轮询异常：" + shortMsg(e));
             }
-            if (backgroundPollHandler != null) backgroundPollHandler.postDelayed(this, Math.max(700, AppPrefs.interval(ScreenshotService.this)));
+            if (backgroundPollHandler != null) {
+                int fallbackDelay = Math.max(AppPrefs.ACCESSIBILITY_FALLBACK_INTERVAL_MS, AppPrefs.interval(ScreenshotService.this) * 4);
+                backgroundPollHandler.postDelayed(this, fallbackDelay);
+            }
         }
     };
 
     @Override public void onServiceConnected() {
         super.onServiceConnected();
         instance = this;
-        boolean clearedLegacyServer = AppPrefs.migrateLegacyConfig(this);
-        DebugState.append(this, "无障碍服务已连接：截图/读屏/节点坐标/应用门禁可用 v0.3.4.6");
-        if (clearedLegacyServer) DebugState.append(this, "检测到旧版默认服务器地址。请部署自己的 Render 服务后填写新的服务器地址。");
+        DebugState.append(this, "掌心窗 Lite 无障碍已连接：远程锁屏可用");
         watchdog = new Handler(Looper.getMainLooper());
         watchdog.postDelayed(watchdogTick, 15000);
         startBackgroundPolling();
@@ -100,18 +101,27 @@ public class ScreenshotService extends AccessibilityService {
         if (event == null) return;
         CharSequence pkg = event.getPackageName();
         if (pkg != null) currentPackage = pkg.toString();
-        int t = event.getEventType();
-        if (t == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || t == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED || t == AccessibilityEvent.TYPE_VIEW_SCROLLED) updateScreenText();
-        if (t == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkg != null) AppGate.onForegroundPackage(this, pkg.toString());
     }
     @Override public void onInterrupt() { DebugState.append(this, "无障碍服务被中断"); }
 
-    @Override public void onDestroy() {
-        DebugState.append(this, "无障碍服务已断开");
+    private void markDisconnected(String reason) {
+        DebugState.append(this, reason);
         instance = null;
+        currentPackage = "";
+        screenText = "";
+        screenNodesJson = "[]";
         if (watchdog != null) { watchdog.removeCallbacksAndMessages(null); watchdog = null; }
         if (backgroundPollHandler != null) { backgroundPollHandler.removeCallbacksAndMessages(null); backgroundPollHandler = null; }
         if (backgroundPollThread != null) { backgroundPollThread.quitSafely(); backgroundPollThread = null; }
+    }
+
+    @Override public boolean onUnbind(Intent intent) {
+        markDisconnected("无障碍服务已解绑：系统可能已关闭权限");
+        return super.onUnbind(intent);
+    }
+
+    @Override public void onDestroy() {
+        markDisconnected("无障碍服务已断开");
         super.onDestroy();
     }
 
@@ -120,14 +130,14 @@ public class ScreenshotService extends AccessibilityService {
         backgroundPollThread = new HandlerThread("LinjianAccessibilityPoll");
         backgroundPollThread.start();
         backgroundPollHandler = new Handler(backgroundPollThread.getLooper());
-        DebugState.append(this, "无障碍后台轮询已启动 v0.3.4.6，将读取连接设置里的实际地址");
-        backgroundPollHandler.postDelayed(backgroundPollTick, 1000);
+        DebugState.append(this, "掌心窗 Lite 无障碍兜底轮询已启动（前台服务运行时不重复轮询）");
+        backgroundPollHandler.postDelayed(backgroundPollTick, 6000);
     }
 
     private String pollServerFromAccessibility(String serverUrl, String token) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(serverUrl + "/api/poll?device_id=" + java.net.URLEncoder.encode(AppPrefs.device(this), "UTF-8")).openConnection();
-        conn.setConnectTimeout(10000);
-        conn.setReadTimeout(15000);
+        conn.setConnectTimeout(7000);
+        conn.setReadTimeout(8000);
         conn.setRequestMethod("GET");
         conn.setRequestProperty("X-Auth-Token", token);
         try {
@@ -138,7 +148,8 @@ public class ScreenshotService extends AccessibilityService {
                 DebugState.append(this, "无障碍后台轮询：收到命令包");
                 return body;
             } else {
-                DebugState.append(this, "无障碍后台轮询失败：HTTP " + code + " " + clip(body));
+                if (code == 429) DebugState.append(this, "无障碍兜底轮询限流：HTTP 429，稍后自动重试");
+                else DebugState.append(this, "无障碍后台轮询失败：HTTP " + code + " " + clip(body));
             }
             return "";
         } finally { conn.disconnect(); }
@@ -295,6 +306,10 @@ public class ScreenshotService extends AccessibilityService {
     public boolean doBack() { return performGlobalAction(GLOBAL_ACTION_BACK); }
     public boolean doHome() { return performGlobalAction(GLOBAL_ACTION_HOME); }
     public boolean doRecents() { return performGlobalAction(GLOBAL_ACTION_RECENTS); }
+    public boolean doLockScreen() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false;
+        return performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN);
+    }
 
     public boolean doTap(float x, float y) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false;
@@ -347,26 +362,11 @@ public class ScreenshotService extends AccessibilityService {
             if (code >= 200 && code < 300) DebugState.append(this, "上传成功：HTTP " + code + " " + clip(body));
             else DebugState.append(this, "上传失败：HTTP " + code + " " + clip(body));
             conn.disconnect();
-        } catch (Exception e) { DebugState.append(this, "上传异常：" + friendlyNetMsg(e)); }
+        } catch (Exception e) { DebugState.append(this, "上传异常：" + shortMsg(e)); }
     }
 
-    public static String normalizeUrl(String url) { if (url == null) return ""; url = AppPrefs.cleanServer(url); while (url.endsWith("/")) url = url.substring(0, url.length() - 1); return url; }
+    public static String normalizeUrl(String url) { if (url == null) return ""; url = url.trim(); while (url.endsWith("/")) url = url.substring(0, url.length() - 1); return url; }
     static String readBody(HttpURLConnection conn, int code) { try { InputStream is = code >= 400 ? conn.getErrorStream() : conn.getInputStream(); if (is == null) return ""; ByteArrayOutputStream bos = new ByteArrayOutputStream(); byte[] buf = new byte[1024]; int n; while ((n = is.read(buf)) > 0) bos.write(buf, 0, n); return new String(bos.toByteArray(), "UTF-8"); } catch (Exception e) { return ""; } }
-    static String clip(String s) { if (s == null) return ""; s = s.replace('\n', ' ').replace('\r', ' '); return s.length() > 120 ? s.substring(0, 120) + "…" : s; }
-    static String httpHint(int code) {
-        if (code == 401 || code == 403) return "Token 可能不一致，请检查 App 和 Render 环境变量。";
-        if (code == 404) return "接口不存在，可能部署的不是掌心窗后端或后端版本不匹配。";
-        if (code == 502 || code == 503 || code == 504) return "Render 服务可能正在冷启动或启动失败，请等 1 分钟后重试并查看 Render Logs。";
-        if (code >= 500) return "服务器内部错误，请查看 Render Logs。";
-        return "";
-    }
+    static String clip(String s) { if (s == null) return ""; s = s.replace('\n', ' ').replace('\r', ' '); return s.length() > 90 ? s.substring(0, 90) + "…" : s; }
     static String shortMsg(Exception e) { String msg = e.getClass().getSimpleName(); if (e.getMessage() != null) msg += ": " + e.getMessage(); return clip(msg); }
-    static String friendlyNetMsg(Exception e) {
-        String msg = shortMsg(e);
-        String name = e == null ? "" : e.getClass().getSimpleName();
-        if ("UnknownHostException".equals(name)) return clip("DNS 解析失败：手机网络暂时找不到这个 Render 域名。确认地址无空格，服务为 Live；刚创建服务时可等待几分钟再试。原始错误：" + msg);
-        if ("SocketTimeoutException".equals(name)) return clip("连接超时：Render 免费服务可能在冷启动，等 1 分钟后重试；也检查服务是否 Live。原始错误：" + msg);
-        if ("ConnectException".equals(name)) return clip("连接失败：网络或 Render 服务未接通，请检查服务状态和地址。原始错误：" + msg);
-        return msg;
-    }
 }

@@ -67,7 +67,7 @@ public class CycleState {
             o.put("next_period_start", formatDate(next));
             o.put("days_until_next", daysUntil);
             o.put("current_phase", phase);
-            if (periodNow) o.put("summary", "现在是" + phase + "，提醒对" + AppPrefs.userName(ctx) + "温柔一点，注意热敷和休息。");
+            if (periodNow) o.put("summary", "现在是" + phase + "，记得温柔照顾自己，注意热敷和休息。");
             else if (daysUntil >= 0 && daysUntil <= remindBefore) o.put("summary", "预计还有 " + daysUntil + " 天来，少吃冰的，提前准备姨妈巾和热水袋。");
             else o.put("summary", "当前阶段：" + phase + "，预计下次 " + formatDate(next) + "。");
         } catch (Exception e) {

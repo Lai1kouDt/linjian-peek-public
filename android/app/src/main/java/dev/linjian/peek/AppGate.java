@@ -6,6 +6,20 @@ import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.Settings;
+import android.graphics.Color;
+import android.graphics.PixelFormat;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.view.Gravity;
+import android.view.View;
+import android.view.WindowManager;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -19,6 +33,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -35,6 +50,10 @@ public class AppGate {
     private static volatile long lastForegroundSince = 0;
     private static volatile long lastGateAt = 0;
     private static volatile String lastGatePackage = "";
+    private static volatile View overlayView = null;
+    private static volatile WindowManager overlayWindowManager = null;
+    private static volatile String visibleLockActivityPackage = "";
+    private static volatile long visibleLockActivityAt = 0;
 
     public static boolean enabled(Context ctx) { return AppPrefs.get(ctx).getBoolean(KEY_ENABLED, true); }
 
@@ -117,6 +136,40 @@ public class AppGate {
         return put(out, false, "unknown_app_gate_action:" + action);
     }
 
+    private static double commandMinutes(JSONObject cmd, double fallback) {
+        try {
+            // 远程 MCP 的通用 send_phone_command 会把未填写的字段也带上，例如 minutes=0。
+            // 旧逻辑只要看到 minutes 字段就立刻返回 fallback，导致 duration_minutes=1/2/60 被忽略，统一落到默认 30 分钟。
+            // 这里改成“只有正数才采用”，0 或缺省继续往后看其它字段。
+            double v = 0;
+            if (cmd.has("duration_minutes")) { v = cmd.optDouble("duration_minutes", 0); if (v > 0) return v; }
+            if (cmd.has("minutes")) { v = cmd.optDouble("minutes", 0); if (v > 0) return v; }
+            if (cmd.has("extend_minutes")) { v = cmd.optDouble("extend_minutes", 0); if (v > 0) return v; }
+            if (cmd.has("locked_minutes")) { v = cmd.optDouble("locked_minutes", 0); if (v > 0) return v; }
+            if (cmd.has("duration_ms")) { v = cmd.optDouble("duration_ms", 0) / 60000.0; if (v > 0) return v; }
+            if (cmd.has("duration_millis")) { v = cmd.optDouble("duration_millis", 0) / 60000.0; if (v > 0) return v; }
+            if (cmd.has("duration_seconds")) { v = cmd.optDouble("duration_seconds", 0) / 60.0; if (v > 0) return v; }
+            if (cmd.has("locked_until_ms")) {
+                long until = cmd.optLong("locked_until_ms", 0);
+                if (until > System.currentTimeMillis()) return Math.max(0.1, (until - System.currentTimeMillis()) / 60000.0);
+            }
+            if (cmd.has("duration")) {
+                double d = cmd.optDouble("duration", -1);
+                // 350 是点击/滑动命令的默认 duration，不应该被门禁误当成 350 分钟或 350 秒。
+                if (d > 0 && Math.abs(d - 350.0) > 0.001) {
+                    if (d >= 600000) return d / 60000.0; // 毫秒：7200000 = 2 小时
+                    if (d >= 600) return d / 60.0;      // 秒：7200 = 2 小时
+                    return d;                           // 小数字按分钟
+                }
+            }
+        } catch (Exception ignored) { }
+        return fallback;
+    }
+
+    private static double positive(double value, double fallback) {
+        return value > 0 ? value : fallback;
+    }
+
     private static JSONObject lockApp(Context ctx, JSONObject cmd) throws Exception {
         String pkg = resolvePackage(ctx, cmd);
         if (!AppPrefs.isPackageLike(pkg)) return put(new JSONObject(), false, "package_invalid");
@@ -124,8 +177,7 @@ public class AppGate {
         String appName = cmd.optString("appName", cmd.optString("app_name", cmd.optString("app", labelOf(ctx, pkg))));
         long until = cmd.optLong("locked_until_ms", 0);
         if (until <= 0) {
-            double minutes = cmd.optDouble("locked_minutes", cmd.optDouble("duration_minutes", cmd.optDouble("minutes", 30)));
-            if (minutes <= 0) minutes = 30;
+            double minutes = commandMinutes(cmd, 30);
             until = System.currentTimeMillis() + Math.round(minutes * 60000.0);
         }
         JSONObject lock = new JSONObject();
@@ -135,8 +187,8 @@ public class AppGate {
         lock.put("locked_until_ms", until);
         lock.put("locked_until_local", formatLocal(until));
         lock.put("mode", normalizeMode(cmd.optString("mode", "medium")));
-        lock.put("reason", cmd.optString("reason", AppPrefs.partnerName(ctx) + "先把这扇门关一会儿。"));
-        lock.put("message", cmd.optString("message", "先回来找我，不准一个人刷太久。"));
+        lock.put("reason", cmd.optString("reason", "").trim());
+        lock.put("message", cmd.optString("message", "").trim());
         lock.put("created_at_ms", System.currentTimeMillis());
         lock.put("emergency_unlock_minutes", Math.max(1, cmd.optInt("emergencyUnlockMinutes", cmd.optInt("emergency_unlock_minutes", 5))));
         String pass = cmd.optString("emergencyPassphrase", cmd.optString("emergency_passphrase", ""));
@@ -145,6 +197,7 @@ public class AppGate {
         JSONObject s = state(ctx); locks(s).put(pkg, lock); save(ctx, s);
         addGateApp(ctx, lock.optString("app_name", labelOf(ctx, pkg)), pkg);
         log(ctx, "锁定 " + lock.optString("app_name") + " 到 " + lock.optString("locked_until_local") + "：" + lock.optString("reason"));
+        triggerCurrentForegroundIfNeeded(ctx, pkg);
         return put(new JSONObject(), true, "locked_app:" + pkg + " until " + lock.optString("locked_until_local"));
     }
 
@@ -186,7 +239,7 @@ public class AppGate {
         if (l == null) return put(new JSONObject(), false, "lock_not_found:" + pkg);
         long base = Math.max(System.currentTimeMillis(), l.optLong("locked_until_ms", System.currentTimeMillis()));
         long until = cmd.optLong("locked_until_ms", 0);
-        if (until <= 0) until = base + Math.round(cmd.optDouble("minutes", cmd.optDouble("extend_minutes", 10)) * 60000.0);
+        if (until <= 0) until = base + Math.round(commandMinutes(cmd, 10) * 60000.0);
         l.put("locked_until_ms", until); l.put("locked_until_local", formatLocal(until)); l.put("active", true);
         if (cmd.optString("reason", "").length() > 0) l.put("reason", cmd.optString("reason"));
         if (cmd.optString("message", "").length() > 0) l.put("message", cmd.optString("message"));
@@ -196,7 +249,7 @@ public class AppGate {
 
     private static JSONObject denyUnlock(Context ctx, JSONObject cmd) throws Exception {
         String pkg = resolvePackage(ctx, cmd);
-        String msg = cmd.optString("message", cmd.optString("reason", AppPrefs.partnerName(ctx) + "拒绝了这次解锁申请。"));
+        String msg = cmd.optString("message", cmd.optString("reason", AppPrefs.companionName(ctx) + "拒绝了这次解锁申请。"));
         log(ctx, "拒绝解锁申请：" + pkg + "；" + msg);
         return put(new JSONObject(), true, "denied_unlock_request:" + pkg + ":" + msg);
     }
@@ -225,15 +278,213 @@ public class AppGate {
             if (isTemporarilyAllowed(ctx, lock, now, true)) return;
             if (pkg.equals(lastGatePackage) && now - lastGateAt < 1800) return;
             lastGatePackage = pkg; lastGateAt = now;
-            String mode = lock.optString("mode", "medium");
+            showGateByPriority(ctx, pkg, lock);
+            log(ctx, "门禁拦截：" + lock.optString("app_name", pkg) + "（全屏页优先，遮罩兜底，Home 最后兜底）");
+            ActivityEventStore.recordPhone(ctx, "screen_break_trigger", "应用门禁触发", lock.optString("app_name", pkg));
+        } catch (Exception e) { DebugState.append(ctx, "门禁检查异常：" + ScreenshotService.shortMsg(e)); }
+    }
+
+    private static boolean canDrawOverlay(Context ctx) {
+        try { return Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(ctx); }
+        catch (Exception e) { return false; }
+    }
+
+    public static void markLockActivityVisible(String pkg, boolean visible) {
+        if (visible) {
+            visibleLockActivityPackage = pkg == null ? "" : pkg;
+            visibleLockActivityAt = System.currentTimeMillis();
+        } else {
+            visibleLockActivityPackage = "";
+            visibleLockActivityAt = 0;
+        }
+    }
+
+    private static boolean isLockActivityVisibleFor(String pkg) {
+        return pkg != null
+                && pkg.equals(visibleLockActivityPackage)
+                && System.currentTimeMillis() - visibleLockActivityAt < 3000;
+    }
+
+    private static void showGateByPriority(final Context ctx, final String pkg, final JSONObject lock) {
+        final Context app = ctx.getApplicationContext();
+        final Handler main = new Handler(Looper.getMainLooper());
+
+        // v0.3.8.8：应用门禁优先级调整为「全屏锁定页 > 全屏悬浮遮罩 > 回到桌面」。
+        // 这样 OPPO/ColorOS 上即使悬浮窗或后台弹层被系统限制，也会先尝试最强的 Activity 拦截。
+        showLockActivity(app, pkg);
+
+        main.postDelayed(() -> {
+            if (isLockActivityVisibleFor(pkg)) return;
+            if (canDrawOverlay(app)) {
+                DebugState.append(app, "应用门禁：全屏锁定页未确认显示，改用全屏悬浮遮罩兜底；目标=" + pkg);
+                showOverlayLock(app, pkg, lock);
+            } else {
+                goHome(app, "全屏锁定页未确认显示，且没有悬浮窗权限");
+            }
+        }, 700);
+
+        main.postDelayed(() -> {
+            if (isLockActivityVisibleFor(pkg)) return;
+            if (overlayView != null) return;
+            goHome(app, "全屏锁定页与悬浮遮罩均未确认显示");
+        }, 1400);
+    }
+
+    private static void triggerCurrentForegroundIfNeeded(final Context ctx, final String lockedPkg) {
+        final Context app = ctx.getApplicationContext();
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                String current = ScreenshotService.currentPackage();
+                if (lockedPkg != null && lockedPkg.equals(current)) {
+                    DebugState.append(app, "应用门禁：锁定后发现目标已在前台，立即触发拦截：" + lockedPkg);
+                    onForegroundPackage(app, lockedPkg);
+                }
+            } catch (Exception e) {
+                DebugState.append(app, "应用门禁：锁定后前台检查失败：" + ScreenshotService.shortMsg(e));
+            }
+        }, 200);
+    }
+
+    private static void goHome(Context ctx, String reason) {
+        try {
             ScreenshotService svc = ScreenshotService.getInstance();
-            if ("strict".equals(mode) && svc != null) svc.doHome();
+            if (svc != null) {
+                svc.doHome();
+                DebugState.append(ctx, "应用门禁兜底 Home：" + reason);
+            } else {
+                DebugState.append(ctx, "应用门禁兜底 Home 失败：无障碍服务未连接；" + reason);
+            }
+        } catch (Exception e) {
+            DebugState.append(ctx, "应用门禁兜底 Home 异常：" + ScreenshotService.shortMsg(e));
+        }
+    }
+
+    private static void showLockActivity(Context ctx, String pkg) {
+        try {
+            markLockActivityVisible(pkg, false);
             Intent i = new Intent(ctx, LockActivity.class);
             i.putExtra("package", pkg);
             i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             ctx.startActivity(i);
-            log(ctx, "门禁拦截：" + lock.optString("app_name", pkg));
-        } catch (Exception e) { DebugState.append(ctx, "门禁检查异常：" + ScreenshotService.shortMsg(e)); }
+            DebugState.append(ctx, "门禁启动全屏锁定页：" + pkg);
+        } catch (Exception e) { DebugState.append(ctx, "门禁启动全屏锁定页失败：" + ScreenshotService.shortMsg(e)); }
+    }
+
+    private static void showOverlayLock(final Context ctx, final String pkg, final JSONObject lock) {
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try {
+                final Context app = ctx.getApplicationContext();
+                final WindowManager wm = (WindowManager) app.getSystemService(Context.WINDOW_SERVICE);
+                if (wm == null) { goHome(ctx, "WindowManager 为空，悬浮遮罩无法显示"); return; }
+                removeOverlay();
+
+                // 悬浮窗兜底必须是「全屏触摸拦截层」，不能只是中间一张卡片。
+                // 这样即使全屏 Activity 被系统限制弹不出来，底下的小红书/抖音也不会继续接到点击和滑动。
+                LinearLayout root = new LinearLayout(app);
+                root.setOrientation(LinearLayout.VERTICAL);
+                root.setGravity(Gravity.CENTER);
+                root.setPadding(dp(ctx, 22), dp(ctx, 22), dp(ctx, 22), dp(ctx, 22));
+                root.setClickable(true);
+                root.setFocusable(true);
+                root.setBackgroundColor(0x88F2EAFB);
+                root.setOnClickListener(v -> { /* 空白遮罩吃掉点击，不关闭也不透传 */ });
+
+                LinearLayout card = new LinearLayout(app);
+                card.setOrientation(LinearLayout.VERTICAL);
+                card.setGravity(Gravity.CENTER);
+                card.setPadding(dp(ctx, 22), dp(ctx, 20), dp(ctx, 22), dp(ctx, 20));
+                GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFFFDF6F8, 0xFFEAF6F1});
+                bg.setCornerRadius(dp(ctx, 24));
+                bg.setStroke(dp(ctx, 1), 0x66B8A8D8);
+                card.setBackground(bg);
+                card.setClickable(true);
+                card.setOnClickListener(v -> { /* 卡片区域也不向下透传 */ });
+
+                TextView title = new TextView(app);
+                title.setText(lock.optString("app_name", labelOf(ctx, pkg)) + " 已被锁定");
+                title.setTextColor(0xFF2D3E39);
+                title.setTextSize(20);
+                title.setTypeface(Typeface.DEFAULT_BOLD);
+                title.setGravity(Gravity.CENTER);
+                card.addView(title, new LinearLayout.LayoutParams(-1, -2));
+
+                TextView msg = new TextView(app);
+                String text = lock.optString("message", "先休息一下，等会儿再回来。");
+                if (text == null || text.trim().isEmpty()) text = lock.optString("reason", "先休息一下，等会儿再回来。");
+                msg.setText(text + "\n到 " + lock.optString("locked_until_local", "稍后") + " 自动解除。");
+                msg.setTextColor(0xFF596D66);
+                msg.setTextSize(13);
+                msg.setGravity(Gravity.CENTER);
+                msg.setLineSpacing(dp(ctx, 3), 1f);
+                LinearLayout.LayoutParams msgLp = new LinearLayout.LayoutParams(-1, -2);
+                msgLp.topMargin = dp(ctx, 10);
+                card.addView(msg, msgLp);
+
+                LinearLayout row = new LinearLayout(app);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER);
+                LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(ctx, 38));
+                rowLp.topMargin = dp(ctx, 16);
+
+                Button home = overlayButton(app, "回到桌面", true);
+                home.setOnClickListener(v -> { ScreenshotService svc = ScreenshotService.getInstance(); if (svc != null) svc.doHome(); removeOverlay(); });
+                row.addView(home, new LinearLayout.LayoutParams(0, -1, 1f));
+
+                Button detail = overlayButton(app, "查看详情", false);
+                LinearLayout.LayoutParams detailLp = new LinearLayout.LayoutParams(0, -1, 1f);
+                detailLp.leftMargin = dp(ctx, 8);
+                detail.setOnClickListener(v -> {
+                    removeOverlay();
+                    showLockActivity(app, pkg);
+                });
+                row.addView(detail, detailLp);
+                card.addView(row, rowLp);
+
+                LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
+                        Math.max(dp(ctx, 280), app.getResources().getDisplayMetrics().widthPixels - dp(ctx, 34)),
+                        -2);
+                root.addView(card, cardLp);
+
+                int type = Build.VERSION.SDK_INT >= 26 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_PHONE;
+                WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        type,
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                        PixelFormat.TRANSLUCENT);
+                lp.gravity = Gravity.CENTER;
+                wm.addView(root, lp);
+                overlayView = root;
+                overlayWindowManager = wm;
+                DebugState.append(app, "门禁悬浮层已启动：touch_blocking=true；目标=" + pkg);
+            } catch (Exception e) {
+                DebugState.append(ctx, "门禁悬浮层失败，回到桌面兜底：" + ScreenshotService.shortMsg(e));
+                goHome(ctx, "悬浮遮罩显示失败");
+            }
+        });
+    }
+
+    private static Button overlayButton(Context ctx, String text, boolean primary) {
+        Button b = new Button(ctx);
+        b.setText(text);
+        b.setTextSize(12);
+        b.setAllCaps(false);
+        b.setTextColor(primary ? Color.WHITE : 0xFF596D66);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(primary ? 0xFF8E74C8 : 0x22B8A8D8);
+        bg.setCornerRadius(dp(ctx, 18));
+        b.setBackground(bg);
+        return b;
+    }
+
+    private static int dp(Context ctx, float value) { return Math.round(value * ctx.getResources().getDisplayMetrics().density); }
+
+    private static void removeOverlay() {
+        try {
+            if (overlayWindowManager != null && overlayView != null) overlayWindowManager.removeView(overlayView);
+        } catch (Exception ignored) { }
+        overlayView = null;
+        overlayWindowManager = null;
     }
 
     private static void accountUsageSwitch(Context ctx, String nextPkg, long now) throws Exception {
@@ -393,7 +644,17 @@ public class AppGate {
     }
 
     private static String[] protectedPackages(Context ctx) {
-        return new String[]{SELF_PACKAGE, AppPrefs.homeTargetPackage(ctx), "com.android.settings", "com.android.phone", "com.google.android.dialer", "com.android.contacts", "com.android.mms", "com.eg.android.AlipayGphone"};
+        ArrayList<String> packages = new ArrayList<>();
+        packages.add(SELF_PACKAGE);
+        String companionTarget = AppPrefs.homeTargetPackage(ctx);
+        if (!companionTarget.isEmpty()) packages.add(companionTarget);
+        packages.add("com.android.settings");
+        packages.add("com.android.phone");
+        packages.add("com.google.android.dialer");
+        packages.add("com.android.contacts");
+        packages.add("com.android.mms");
+        packages.add("com.eg.android.AlipayGphone");
+        return packages.toArray(new String[0]);
     }
 
     private static boolean isProtectedPackage(Context ctx, String pkg) {

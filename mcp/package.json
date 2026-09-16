@@ -1,9 +1,9 @@
 {
   "name": "linjian-unified-mcp",
-  "version": "0.1.6",
+  "version": "0.3.9-lite.2",
   "private": true,
   "type": "module",
-  "description": "Unified MCP server for 掌心窗: screenshot, phone control, alarm, notification.",
+  "description": "Minimal MCP server for 掌心窗: connection health, phone state, alarms, and screen locking.",
   "scripts": {
     "start": "node server.js"
   },

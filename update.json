@@ -1,13 +1,15 @@
 {
-  "latest_version_name": "0.3.5.1",
-  "latest_version_code": 30501,
-  "apk_url": "https://github.com/linzhi-524/linjian-peek-public/releases/download/v0.3.5.1/Zhangxinchuang-public-v0.3.5.1.apk",
+  "latest_version_name": "0.3.6.6",
+  "latest_version_code": 30606,
+  "apk_url": "https://github.com/linzhi-524/linjian-peek-public/releases/download/v0.3.6.6/zhangxinchuang-public-debug-apk.1.zip",
   "sha256": "",
   "required": false,
   "changelog": [
-    "允许 Android 端连接局域网/自建服务器的 HTTP 明文地址，例如 http://192.168.x.x:8513。",
-    "修复本地纯 HTTP 服务轮询时报 Cleartext HTTP traffic not permitted 的问题。",
-    "保留 v0.3.5.0 归电公开版全部功能，本版为连接兼容性 hotfix。",
-    "公网部署仍建议使用 HTTPS；HTTP 放开主要用于本人设备、本地局域网和测试环境。"
+    "修复今日屏幕时间跨凌晨不重置：改为按手机本地 0 点到当前时间统计，并用 UsageEvents 裁剪今日区间。",
+    "新增公开版“此刻状态”卡片：显示手机姿态、环境光、当前 App 与授权后的定位。",
+    "设置页新增“此刻状态”折叠抽屉，定位权限与悬浮窗权限均放在设置页由用户主动开启。",
+    "应用门禁新增无障碍触发后的悬浮锁定页；没有悬浮窗权限时自动回退到旧锁定页。",
+    "设置页主题改为折叠抽屉；移除“窗面与陪伴…”与“头像由你…”两张说明卡，陪伴页和守护页保持不改。",
+    "固定签名保持不变，支持覆盖安装旧版本。"
   ]
 }

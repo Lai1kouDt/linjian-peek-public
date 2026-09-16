@@ -1,13 +1,28 @@
 {
-  "latest_version_name": "0.3.5.1",
-  "latest_version_code": 30501,
-  "apk_url": "https://github.com/linzhi-524/linjian-peek-public/releases/download/v0.3.5.1/Zhangxinchuang-public-v0.3.5.1.apk",
+  "latest_version_name": "0.3.8.8",
+  "latest_version_code": 30808,
+  "apk_url": "https://github.com/linzhi-524/linjian-peek-public/releases/download/v0.3.8.8/Zhangxinchuang-public-v0.3.8.8.apk",
   "sha256": "",
   "required": false,
+  "notes": [
+    "修复「此刻状态」中媒体权限已开启但仍显示“暂无媒体播放”的问题。",
+    "媒体状态新增 MediaSession 主动读取，不再只依赖通知回调，兼容更多音乐/视频 App。",
+    "保留通知监听扫描作为兜底：通知回调和活跃媒体会话任一方式读到内容即可显示。",
+    "保留隐私限制：仅读取媒体标题、歌手、专辑、播放状态和应用名，不读取通知正文。",
+    "版本号升级到 v0.3.8.8 / 30808，固定签名保持不变。"
+  ],
   "changelog": [
-    "允许 Android 端连接局域网/自建服务器的 HTTP 明文地址，例如 http://192.168.x.x:8513。",
-    "修复本地纯 HTTP 服务轮询时报 Cleartext HTTP traffic not permitted 的问题。",
-    "保留 v0.3.5.0 归电公开版全部功能，本版为连接兼容性 hotfix。",
-    "公网部署仍建议使用 HTTPS；HTTP 放开主要用于本人设备、本地局域网和测试环境。"
+    "修复「此刻状态」中媒体权限已开启但仍显示“暂无媒体播放”的问题。",
+    "媒体状态新增 MediaSession 主动读取，不再只依赖通知回调，兼容更多音乐/视频 App。",
+    "保留通知监听扫描作为兜底：通知回调和活跃媒体会话任一方式读到内容即可显示。",
+    "保留隐私限制：仅读取媒体标题、歌手、专辑、播放状态和应用名，不读取通知正文。",
+    "版本号升级到 v0.3.8.8 / 30808，固定签名保持不变。"
+  ],
+  "release_notes": [
+    "修复「此刻状态」中媒体权限已开启但仍显示“暂无媒体播放”的问题。",
+    "媒体状态新增 MediaSession 主动读取，不再只依赖通知回调，兼容更多音乐/视频 App。",
+    "保留通知监听扫描作为兜底：通知回调和活跃媒体会话任一方式读到内容即可显示。",
+    "保留隐私限制：仅读取媒体标题、歌手、专辑、播放状态和应用名，不读取通知正文。",
+    "版本号升级到 v0.3.8.8 / 30808，固定签名保持不变。"
   ]
 }

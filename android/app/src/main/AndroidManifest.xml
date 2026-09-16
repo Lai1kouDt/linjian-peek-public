@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="dev.linjian.peek">
+    package="dev.linjian.peek"
+    android:versionCode="30902"
+    android:versionName="0.3.9-lite.2">
 
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="34" />
 
@@ -15,28 +16,21 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
     <queries>
-        <package android:name="com.xingin.xhs" />
-        <package android:name="com.tencent.mm" />
-        <package android:name="com.tencent.mobileqq" />
-        <package android:name="com.ss.android.ugc.aweme" />
-        <package android:name="com.openai.chatgpt" />
-        <package android:name="com.google.android.apps.bard" />
-        <package android:name="com.anthropic.claude" />
-        <package android:name="com.sina.weibo" />
-        <package android:name="com.twitter.android" />
         <intent>
             <action android:name="android.intent.action.SET_ALARM" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DISMISS_ALARM" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SHOW_ALARMS" />
         </intent>
     </queries>
 
@@ -52,7 +46,7 @@
         android:resizeableActivity="true">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".LiteMainActivity"
             android:exported="true"
             android:screenOrientation="portrait"
             android:resizeableActivity="true"
@@ -63,27 +57,12 @@
             </intent-filter>
         </activity>
 
-
-
         <activity
-            android:name=".LockActivity"
+            android:name=".MainActivity"
             android:exported="false"
-            android:excludeFromRecents="true"
-            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
-
-        <activity
-            android:name=".ReminderActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
-
-        <activity
-            android:name=".GuidianActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true"
-            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+            android:screenOrientation="portrait"
+            android:resizeableActivity="true"
+            android:configChanges="keyboardHidden|orientation|screenSize|smallestScreenSize|density|uiMode" />
 
         <service
             android:name=".CompanionService"
@@ -92,7 +71,8 @@
 
         <service
             android:name=".ScreenshotService"
-            android:exported="false"
+            android:label="@string/accessibility_name"
+            android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
@@ -101,6 +81,5 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_config" />
         </service>
-
     </application>
 </manifest>

@@ -1,149 +1,260 @@
-# 掌心窗公开版 v0.3.5.1-cleartext-http
+# 掌心窗 Lite v0.3.9-lite.2
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Lai1kouDt/linjian-peek-public)
+> 当前分支为精简版：MCP 只暴露连接检查、基础手机状态、闹钟和锁屏；Android 启动页已改为单页设置面板。详细说明见 [`docs/lite.md`](docs/lite.md)。下方内容保留自上游公开版，供回退和对照。
 
-> 这个私人部署按钮已指向 Fork `Lai1kouDt/linjian-peek-public`。Blueprint 会创建 `server` 和 `mcp` 两个服务、共用 `LINJIAN_TOKEN`，并为 MCP 额外生成独立的 `MCP_ACCESS_KEY`。
+## v0.3.8.8 此刻状态媒体读取修复
 
-> 私人访问锁：不要使用公开的 `/mcp` 或 `/sse` 地址。部署后在 `zhangxinchuang-mcp` 的 Environment 页面复制 `MCP_ACCESS_KEY`，连接地址写成 `https://你的-mcp.onrender.com/mcp/<MCP_ACCESS_KEY>`。这串完整地址等同密码，不要公开或发给别人。
+- 修复「此刻状态」中媒体权限已开启但仍显示“暂无媒体播放”的问题。
+- 媒体状态新增 MediaSession 主动读取，不再只依赖通知回调，兼容更多音乐/视频 App。
+- 通知监听扫描继续保留作为兜底；通知回调和活跃媒体会话任一方式读到内容即可显示。
+- 保留隐私限制：仅读取媒体标题、歌手、专辑、播放状态和应用名，不读取通知正文。
+- 版本号：`0.3.8.8` / `30808`，固定签名保持不变。
 
-> Render 免费版说明：Blueprint 会把 `zhangxinchuang-server` 的公网主机名自动交给 MCP，并使用 HTTPS 连接。不要改回 `host:10000` 私网地址；免费 Web Service 无法接收这类私网流量。手机数据和控制接口仍由 `LINJIAN_TOKEN` 保护。
+## v0.3.8.7 回家模式设置生效修复
 
-掌心窗是一套“手机端 App + 同步后端 + MCP 服务”的小工具。它可以在你本人授权后，让你设置的陪伴对象看见手机生活状态、请求截图、打开 App、返回/主页/最近任务、点击/滑动、发送通知、设置闹钟、读取轻量生活状态，并在你需要时做应用门禁和主动提醒。
+- 修复回家模式开关、强制抱回、阈值分钟、冷却分钟、返回目标输入后没有即时保存的问题。
+- 配置变化后清空回家模式当前计时与冷却缓存，避免关闭后仍沿用旧状态。
+- 只弹窗模式不再要求必须设置返回目标 APP；未设置返回目标时仍会按阈值发悬浮横幅。
+- 观察 APP 列表为空时回退到默认观察包名：抖音、小红书。
+- 版本号：`0.3.8.7` / `30807`，固定签名保持不变。
 
-这一版把自用版 v0.3.4 的功能和 UI 同步到公开版：总览、看见、守护、设置四页结构一致；天气地区、应用门禁、主动提醒、周期提醒都收进抽屉；同时去掉私人名字、私人设备 ID、私人城市和私用默认配置。默认保留“老公 / 宝宝”的关系语感，但称呼可以在手机端设置里改成你们自己的称呼。设置后的名称会同步到提醒、看一眼、回家模式和门禁页。
 
-> 重要提醒：截图、读屏、控制手机、通知、闹钟、应用门禁、自动打开目标 App 都是敏感能力。只在本人设备、本人服务器、本人明确授权的场景使用。不要把 Token 发给别人，也不要接入不可信 MCP 客户端。
+## v0.3.8.6 应用门禁 OPPO/ColorOS 修复
+
+- 应用门禁优先级调整为：**全屏锁定页 > 全屏悬浮遮罩 > 回到桌面兜底**。
+- 修复部分 OPPO/ColorOS 设备锁定 App 后仍能继续滑动的问题。
+- 锁定命令写入后会立即检查当前前台包名；如果被锁 App 已经在前台，会立刻触发门禁。
+- 无障碍触发增加窗口变化、内容变化、滑动事件兜底，减少“锁了但没等到窗口切换”的漏拦截。
+- 版本号：`0.3.8.6` / `30806`，固定签名保持不变。
 
 
+## v0.3.8.6 页边纸条批注
 
-## v0.3.5.1 HTTP 明文连接修复版
+- 新增「TA 的日记」页边纸条批注：展开日记后长按段落即可留下批注。
+- 不把批注做成评论区，也不在每段固定显示按钮；只有被批注过的段落会出现柔和高亮、纸条数量与便签预览。
+- 新增 MCP 批注工具：`add_diary_annotation`、`list_diary_annotations`、`read_diary_entry_with_annotations`、`mark_diary_annotations_seen`、`delete_diary_annotation`。
+- 日记备份导入/导出会带上批注；删除日记或日记本会同步清理对应纸条。
+- 版本号：`0.3.8.6` / `30806`，固定签名保持不变。
 
-这一版是在 v0.3.5.0 归电公开版基础上的 hotfix，主要解决部分用户使用本地/局域网纯 HTTP 服务时，Android 端后台轮询被系统拦截的问题。
+## v0.3.8.6 日记写入兜底修复
 
-- AndroidManifest 已将 `android:usesCleartextTraffic` 改为 `true`。
-- 支持连接 `http://192.168.x.x:8513`、`http://局域网IP:端口` 这类本地 HTTP 服务。
-- 修复日志里反复出现 `Cleartext HTTP traffic to 192.168.x.x not permitted` 的问题。
-- 保留 v0.3.5.0 的归电、感官页、守护页、设置页和 MCP 功能。
-- 公网/正式部署仍推荐 HTTPS；本修复主要面向本人设备、局域网测试和自建 HTTP 服务。
+- 修复部分用户更新后“机能写日记正文，但保存时报日记本 id 对不上”的问题。
+- `write_diary_entry` 现在支持 `book_id` 留空，旧 ID 对不上时会按 `book_name` 或唯一日记本兜底。
+- 如果没有日记本，会自动创建默认「TA 的日记」再写入；如果有多本且无法判断，会返回候选项，不会乱写。
+- 其它模块不改动：专注模式、应用门禁、小金库、外卖助手和守护日历保持 v0.3.8.2 行为。
 
-## v0.3.5.0 归电感官版
+## v0.3.8.6 守护页入口补丁
 
-这一版把私用版里的「归电」搬到公开版，但不合并聆音、鲸鸣、声息等私用功能。
+- 修复普通用户在 App 前台找不到「专注模式」的问题。
+- 守护页 → 安心规则新增「专注模式」卡片，位置在「应用门禁」下面。
+- 点击后可查看专注状态、保存默认规则、开启 5 分钟测试；专注中可查看锁定页或结束专注。
+- 继续保留 MCP 远程工具，AI 仍可通过 `start_focus_mode` 等工具开启全机专注。
 
-- 「感官」页新增归电状态卡：显示上次回来、下次最早归电、今日次数、最近拒绝理由和自动检查结果。
-- 「设置」页新增归电设置：可改归电开关、远程调整许可、全屏来电、提醒间隔、冷却时间、每日上限、安静时段、目标 App、主题、来电文案池和拒绝理由。
-- 归电对象会读取设置里的“对方称呼 / AI 名字”；文案池支持 `{AI}` 和 `{USER}` 占位符。
-- 目标 App 可填 `ChatGPT`、`Claude`、`Gemini`、已保存的应用昵称，或直接填写 Android 包名。接受归电后会跳转到这个目标 App。
-- MCP 新增 `get_guidian_state`、`set_guidian_config`、`trigger_guidian`、`mark_guidian_returned` 和轻量 `get_senses_state`。
+## v0.3.8.6 专注模式与日记本重命名修复
 
-> 归电只记录连接/回来时间、当前前台包名和拒绝理由，不读取聊天内容。
+- 新增 Focus Mode 专注模式：AI 可通过 MCP 开启/结束/查询全机专注。
+- 专注锁定页支持“留言给他”和一次 1 分钟应急放行。
+- MCP `/health` 会显示 `focus_tools: true` 和专注工具清单，方便确认接口真的暴露。
+- 修复 `rename_diary_book`：缺少 `book_id` 时可通过 `old_name` 或唯一日记本自动重命名，减少模型反复调用 `list_diary_books`。
+- Render、Railway、局域网、Cloudflare Worker 相关代码都已随源码同步更新。
 
-## v0.3.4.6 回家目标统一与许可补充
 
-这一版主要修复公开版用户把回家模式目标改成 Claude / Gemini / 自定义包名后，通知详情页仍然写死打开 ChatGPT 的问题。
+## v0.3.8.6 MCP 新工具暴露修复
 
-- 回家模式目标 App 支持填写 `ChatGPT`、`Claude`、`Gemini` 或任意有效 Android 包名。
-- 通知详情页的“回到对方这里”按钮会读取同一个回家目标，不再固定打开 ChatGPT。
-- 设置里的对方称呼会同步到“提醒”“看一眼”“回家模式”和门禁页，避免一处改名、一处仍显示默认称呼。
-- 用户称呼仍可在设置里修改；为空时默认使用“宝宝”。
-- 版本与更新面板新增许可摘要。
-- 补充 LICENSE：允许个人学习、自用部署和本地修改；未经授权不得改名分发、发布衍生 APK、商业售卖或移除原作者说明。
+这版修复部分 AI/MCP 客户端出现“后端 health 已经有新工具，但 ChatGPT 工具面板没有暴露双向申请/外卖助手接口”的问题。
 
-## 许可与二次分发
+- 普通 `/mcp` 提前注册 `wallet_takeout_action` 统一入口，单独工具没刷出时也能通过 `action` 调用。
+- 新增 `/mcp-wallet` 专用端点，只暴露小金库、双向申请和外卖助手工具，减少被客户端工具数量限制截断的概率。
+- `/health` 增加 `mcp_wallet_endpoint`、`schema_exposure_fix`、`priority_tool`、`wallet_takeout_tools`，方便确认部署结果。
+- 原来的 `/mcp`、`/sse` 和手机端功能不变。
 
-本项目当前采用自定义个人使用许可，不是 MIT / Apache / GPL 等开放源代码许可证。你可以阅读源码、学习、个人自用部署和本地修改 UI；但未经项目作者明确许可，不允许改名重新发布、分发衍生 APK、商业售卖、提供付费代部署，也不允许移除原作者说明和许可文件。完整条款见 `LICENSE`。
+## v0.3.8.6 外卖助手与小金库联动
+- 守护页新增「今天吃什么」入口，外卖助手作为单独页面存在，不塞进小金库。
+- 整合私人版外卖助手：单餐预算、今日外卖预算、口味偏好、常点外卖库、记住这道饭、帮我挑、打开链接、复制备注、点到付款页。
+- 外卖助手只帮用户整理、跳转和点到付款前；真正付款必须由用户本人确认。
+- 外卖计划可提交到小金库审批；小金库审批通过后会自动生成一条支出记录，避免“批完还要手动记账”。
+- 审批自动入账使用 approval_id/source_key 去重，重复处理同一申请不会重复计入支出。
 
-## v0.3.4.5 轻量修复
+## v0.3.8.6 小金库双向审批闭环修复
 
-这一版是公开版 hotfix，不合并私用声息功能，重点修复 v0.3.4.4 把部分用户自建 Render 域名误判为旧地址的问题。
+- 补全陪伴者发起申请、查看结果、用户理由写回的 MCP 闭环，不需要控制用户屏幕。
+- 用户处理陪伴者申请时，点击通过 / 暂缓 / 驳回后会弹出理由输入框，理由会写入审批记录。
+- 普通账单金额不再静默默认为 0；申请标题兼容 `item/title/purpose/content/name/note/reason`。
+- 最近消费卡片支持左滑展开操作，可编辑或删除账单；删除前会二次确认。
+- 新增 `save_user_wallet_request_result`、`edit_wallet_record`、`delete_wallet_record`，保留旧工具兼容。
 
-- 不再按 `rork` 或具体域名黑名单拦截服务器地址。
-- 所有用户自建的 `https://xxx.onrender.com` 都允许保存和连接。
-- 连接失败时按真实原因显示日志：DNS 解析失败、Render 冷启动、Token 不一致、接口不匹配或服务器错误。
-- 保留 v0.3.4 系列显示适配、版本与更新、禁用自动备份等修复。
-- README 原有 Render 一键部署、本地 / 局域网部署、Hugging Face 部署和 MCP 教程全部保留。
+## v0.3.8.6 双向申请补全
 
-## 目录说明
+- MCP 新增 `submit_companion_wallet_request`：陪伴者可以主动提交一条申请，等待用户处理。
+- MCP 新增 `list_companion_wallet_requests`：陪伴者可以查看自己提交给用户的申请，以及用户通过、暂缓或驳回后的结果。
+- MCP 新增 `list_wallet_request_results`：按发起方和状态筛选申请记录，方便查看双方处理结果。
+- App 内「审批详情」支持用户处理陪伴者提交的申请：通过、暂缓、驳回。
+- 继续保留 `save_wallet_request_result`，用于更中性地保存处理结果。
 
-- `android/`：手机端 App，App 名为「掌心窗」。
-- `server/`：统一后端，保存截图、命令队列、执行回传和手机生活状态。
-- `mcp/`：MCP 服务，给支持 MCP 的客户端暴露工具。
-- `docs/`：补充说明、MCP 工具清单和版本记录。
 
-## 本版公开化改动
+## v0.3.8.6 反馈修复
 
-- UI 同步到 v0.3.4：总览 / 看见 / 守护 / 设置，顶部小标题栏，轻卡片，抽屉式功能收纳。
-- 保留关系感，但新增称呼设置：可以改“老公”和“宝宝”等默认称呼，并同步到提醒、看一眼、回家模式和门禁页。
-- 默认设备 ID 改为 `android-phone`，不带私人设备名。
-- 默认天气地区改为通用示例，不带私人城市；用户可在“天气地区”抽屉里自行添加。
-- 应用门禁同步私用版功能，但公开版不内置私人锁定理由和私人口令。
-- 包名白名单包含 ChatGPT、Gemini、Claude、微博、X，并保留小红书、微信、QQ、抖音、Speedcat。回家目标 App 不再固定为 ChatGPT。
-- README 保留 Render 一键部署和本地 / 局域网部署教程，MCP 工具清单补全到 v0.3.4。
+- 应用门禁悬浮窗改为全屏触摸拦截兜底：全屏页受系统限制时，悬浮层会挡住下方 App 点击和滑动。
+- 小金库「待审批」统一改为「审批列表」，生活细节摘要改为“待处理/审批记录”，避免把历史记录误认成未处理。
+- 审批列表新增「我的申请」和「陪伴者的申请」分组，支持折叠查看，为双向申请做准备。
+- MCP 增加更中性的 `save_wallet_request_result` 处理结果工具，保留旧工具兼容。
 
-## MCP 工具
+## v0.3.8.6 小金库更新
+- 守护页新增“小金库”：本地记账、预算规则、历史月份侧边栏、待审批详情。
+- 小金库默认保存在手机本地；MCP/AI 只能在用户配置连接后读取预算摘要、最近记录和待审批。
+- 陪伴者名字跟随设置页“陪伴者/AI 名称”，例如会显示“等待陪伴者审批”。
+- 开启通知读取权限后，可在本地识别疑似支付通知并生成待确认账单；不读取支付密码，不接管银行卡。
 
-详见 `docs/mcp.md`。常用工具包括：
 
-- 看见与状态：`peek_screen`、`latest_screen`、`linjian_status`、`get_life_state`、`get_phone_state`、`get_screen_nodes`。
-- 天气与提醒：`send_notification`、`send_weather_notification`、`set_alarm`。
-- 手机控制：`open_app`、`phone_home`、`phone_back`、`phone_recents`、`tap`、`swipe`、`tap_text`、`input_text`、`run_sequence`、`run_preset`。
-- 应用包名：`list_known_apps`、`save_known_app`。
-- 小红书辅助：`draft_xhs_comment`、`xhs_comment`、`send_visible_comment_after_confirmation`。
-- 应用门禁：`lock_app`、`unlock_app`、`temporary_unlock_app`、`extend_lock`、`deny_unlock_request`、`get_lock_state`、`set_emergency_passphrase`、`list_lockable_apps`。
+## v0.3.8.6 修复重点
 
-## 手机端安装
+- 修复归电来电页「接通」后没有跳转到归电设置里指定包名的问题：接通后会读取 `guidian_target_package`，关闭来电页后再按包名启动目标 App，失败时写入调试日志并提示原因。
+- 修复陪伴页「xx 的行动」不显示 AI/MCP 工具调用记录的问题：MCP 行动会同步写入统一行动日志，手机端同步时会合并本地与远端行动记录，不再被本地旧记录遮挡。
+- Railway 文档改为手动双服务部署说明，移除 README 中未生成模板码的一键部署引导，避免用户误把 server 域名当成 MCP 域名。
+- 今日页「此刻状态」卡片新增媒体状态：用户开启通知使用权后，可显示正在播放的歌曲/音频标题、歌手、播放状态与来源 App。
 
-最省心的方式：把项目上传 GitHub，打开 **Actions → Build Android Debug APK → Run workflow**，等构建完成后在 Artifacts 里下载 APK。
+## v0.3.8.6 快速修复
 
-手机安装后：
+- 补充 `server/Dockerfile`、`.dockerignore` 与 `requirements.txt`，避免 Railway 在 server 服务构建阶段无法识别 Python 项目。Railway server 服务现在推荐：Root Directory=`server`，Build Command 留空，Start Command 留空，由 Dockerfile 启动 `python linjian_server.py`。
 
-1. 打开《掌心窗》。
-2. 填统一后端地址，例如 `https://你的-server.onrender.com`。
-3. 填 `LINJIAN_TOKEN`，必须和后端环境变量完全一致。
-4. 设备 ID 默认 `android-phone`，多台设备时可以改成 `my-phone`、`pad` 等。
-5. 打开无障碍服务；Android 13+ 还要允许通知权限。
-6. 回到 App，点“启动”。
-7. 点“给对方看一眼”，后端能收到截图就说明主链路通了。
+- 修复网页端 MCP 管理器连接公开版 MCP 时的跨域响应头问题。
+- 设置页「连接设置」会自动保存服务器地址、Token、设备 ID 与轮询间隔，杀掉后台再打开也会保留。
 
-## 部署教程 1：Render 一键 / 手动部署
+## v0.3.8.6 日记与守护日历更新
 
-### 方式一：点 README 顶部的一键部署按钮
+- 守护日历事件补充稳定 ID，支持在日期详情卡中编辑、确认删除，并兼容没有 ID 的旧数据。
+- MCP 完善 `list_guardian_days`、`add_guardian_day`、`update_guardian_day`、`delete_guardian_day`。
+- 陪伴页新增本机保存的“TA 的日记”：纸质封面与纸页、左侧日期抽屉、关键词/日期搜索、封面修改和导入导出备份。
+- 日记正文默认仅显示四行摘要；点击对应纸页展开全文，再次点击即可收起，切换纸页时会自动折叠上一篇。
+- 日记封面增加书脊、纸页厚度、书签和立体阴影，书名信息直接居中落在封面上并按屏幕高度调整视觉位置；日记与守护日历二级页改用精简顶部，日历主体适当下移。
+- 日记正文纸张改为浅粉米白渐变，使用淡灰紫横线、粉色页边线和低对比纸纤维，心情以柔和印章显示。
+- “更多”菜单支持手动添加日记；MCP 支持创建、读取、搜索、更新和删除日记本及日记。
+- 固定公开版签名保持不变，可继续覆盖安装旧版本。
 
-1. 确认代码已经上传到公开仓库 `linzhi-524/linjian-peek-public`。
-2. 点击 README 顶部的 **Deploy to Render** 按钮。Render 会读取仓库根目录的 `render.yaml`。
-3. 确认创建两个 Web Service：
-   - `zhangxinchuang-server`：手机端连接的统一后端。
-   - `zhangxinchuang-mcp`：AI 客户端连接的 MCP 服务。
-4. 部署完成后，手机 App 里填写 `zhangxinchuang-server` 的外部地址。
-5. 在 `zhangxinchuang-mcp` 的 Environment 页面复制自动生成的 `MCP_ACCESS_KEY`；AI 客户端填写 `https://你的-mcp.onrender.com/mcp/<MCP_ACCESS_KEY>`。SSE 客户端则使用 `/sse/<MCP_ACCESS_KEY>`。
+## v0.3.6.6 稳定性修复
 
-> 一键部署会自动生成并共用 `LINJIAN_TOKEN`，还会给 MCP 单独生成 `MCP_ACCESS_KEY`。如果后续手动改 Token，记得 server、mcp、手机端三处必须一致；更换访问密钥后，也要同步更新 AI 客户端里的完整 MCP 地址。
+- 将默认轮询间隔从旧版的 1.5 秒调整为 3 秒，并对过低旧配置自动回到 3 秒，减少多人公开使用时的请求压力。
+- 生活状态上传改为 10 秒限频，不再每轮都向后端上报。
+- 无障碍服务改为兜底轮询：前台服务运行时不重复请求 `/api/poll`，降低系统后台压力，也减少触发 429 的概率。
+- MCP 遇到 429 会返回清晰限流提示；手机端遇到 429 会短暂退避后重试。
+- 无障碍异常提示补充“允许受限设置、关闭电池优化、允许后台运行”等排查步骤。
 
-### 方式二：手动创建 Render 服务
 
-下面是手动配置，适合一键部署失败时照着填。
+## v0.3.6.6 修复重点
 
-### A. 部署后端 server
+- 修复 MCP 状态读取容易超过 20 秒的问题：`get_phone_state` 改为快速读取服务器缓存，不再被活动日志记录或长轮询拖慢。
+- 缩短 MCP 到后端、命令排队和命令状态查询的默认等待时间，避免 Render 冷启动/网络波动时整条工具链卡死。
+- `open_app` / 门禁类工具增加空参数拦截：缺少 App 名称或包名时直接返回明确错误，不再下发到手机端形成 `package_empty`。
+- 增加常用 App 名称到包名的 MCP 侧兜底映射，例如小红书、抖音、微信、QQ、QQ音乐。
+- 保留 v0.3.6.3 的守护日历保存修复与应用门禁旧版工具名兼容。
+- 清理公开包里的 `server/.env` 与 `__pycache__`，只保留 `.env.example`。
+- 固定签名保持不变，可覆盖安装上一版公开版。
 
-Render 新建 **Web Service**，连接你的 GitHub 仓库。
 
-配置：
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/linzhi-524/linjian-peek-public)
+
+
+掌心窗公开版是一个可自部署的 Android 陪伴窗：手机端负责展示、截图/读屏、通知、日历、门禁与息屏等本机能力；同步后端负责保存状态和下发指令；MCP 服务负责把这些能力暴露给 AI 客户端使用。
+
+公开版对齐私人版的粉白卡片 UI，但不复制私人绑定内容。它适合作为公开模板，让用户自己填写名字、目标 App 和服务器配置。
+
+## 本版内容
+
+- **今日页**：今日窗语、今日专注、天气、下一件事、手机电量、此刻状态（姿态/光线/当前 App/授权后定位与媒体播放）、今日轨迹。
+- **陪伴页**：陪伴对象卡片、最近一句话、陪伴天数、下个纪念日、行动记录、归电入口，以及本机保存的“TA 的日记”。
+- **守护页**：守护日历、目标 App 设置、应用门禁、屏幕休息、提醒、天气、息屏。
+- **设置页**：服务器连接、Token、设备 ID、用户名称、陪伴对象名称、目标 App、权限、主动提醒、周期、主题、调试、版本更新、许可。
+- **MCP**：截图、读屏、点击、输入、通知、天气、日历、归电、门禁、屏幕休息、提醒、到访记录、关心策略等通用工具。
+
+公开版只保留适合公开发布和自部署的通用能力，不包含私人绑定内容、私人 Token、私人服务地址、固定人物关系或不可公开的专属接口。
+
+## 个性化配置
+
+在 Android 设置页填写：
+
+- `userName`：用户自己的名字，留空时默认“宝宝”。
+- `companionName`：AI 或陪伴对象名字，留空时默认“陪伴者”。
+- `targetApps`：目标 App 列表，每行一个，格式为 `名称|Android包名`，例如 `ChatGPT|com.openai.chatgpt`。
+
+姓名会用于主要界面文案、归电页、提醒、门禁和行动记录。目标 App 会用于归电目标、守护统计、门禁/屏幕休息、回家模式和 MCP 打开 App。
+
+## 目录结构
 
 ```text
-Root Directory: server
-Build Command: 留空 或 echo ok
-Start Command: python linjian_server.py
+android/      Android 客户端和 GitHub Actions 构建脚本
+server/       Python 同步后端，零第三方依赖
+mcp/          Node.js MCP 服务
+docs/         安装、版本和 MCP 工具说明
+render.yaml   Render Blueprint 一键部署配置
+update.json   版本更新信息
 ```
 
-环境变量：
+## 构建 APK
+
+### GitHub Actions 构建
+
+1. 将源码包解压并覆盖到公开仓库根目录，确保 `.github`、`android`、`server`、`mcp` 位于根目录。
+2. 打开 GitHub 仓库 → **Actions** → **Build Android Public APK** → **Run workflow**。
+3. 构建成功后下载 `zhangxinchuang-public-v0.3.8.6-apk` artifact。
+
+构建产物为：
 
 ```text
-LINJIAN_TOKEN=自己生成的一长串随机 token
-LINJIAN_HOST=0.0.0.0
-LINJIAN_KEEP=3
+android/Zhangxinchuang-public-v0.3.8.6.apk
 ```
 
-生成 Token 的方法：
+版本名 `0.3.8.6`，版本码 `30806`。
+
+### 固定签名
+
+公开版已经使用固定签名：
+
+```text
+android/signing/zhangxinchuang-public-release.p12
+```
+
+这份证书与私人版完全分离。后续公开版升级必须保留这份证书，否则已安装用户无法直接覆盖升级。不要把私人版签名混入公开版。
+
+## Render 一键部署
+
+点击 README 顶部的 **Deploy to Render**，或在 Render 中使用本仓库的 `render.yaml` Blueprint。
+
+Blueprint 会创建两个 Web Service：
+
+- `zhangxinchuang-server`：手机端连接的同步后端。
+- `zhangxinchuang-mcp`：AI/MCP 客户端连接的 MCP 服务。
+
+Blueprint 会自动生成并共享：
+
+- `LINJIAN_TOKEN`：手机端、后端和 MCP 共同使用的访问令牌。
+- `LINJIAN_DEFAULT_DEVICE`：默认设备 ID，默认 `android-phone`。
+- `LINJIAN_URL`：MCP 自动引用 `zhangxinchuang-server` 的公网 HTTPS 地址，不需要手动填写。
+
+部署完成后：
+
+1. 打开 `zhangxinchuang-server` 的公网地址，访问 `/health`，看到 `ok: true` 即后端在线。
+2. 打开 `zhangxinchuang-mcp` 的公网地址，访问 `/health`，看到 `has_url: true`、`has_token: true` 即 MCP 配置完成。
+3. 在 Android 设置页填写：
+   - 服务器地址：`zhangxinchuang-server` 的公网地址，不要多余斜杠。
+   - Token：Render 自动生成的同一个 `LINJIAN_TOKEN`。
+   - 设备 ID：建议与 `LINJIAN_DEFAULT_DEVICE` 一致，例如 `android-phone`。
+4. 在 AI/MCP 客户端里填写 MCP 地址：
+   - Streamable HTTP：`https://你的-mcp-域名/mcp`
+   - SSE：`https://你的-mcp-域名/sse`
+
+如果你是从旧版 0.3.6.3 更新上来，**直接重新部署 MCP 服务即可**。新版 MCP 会兼容旧环境变量：即使 `LINJIAN_URL` 仍然是旧版自动写入的 `http://zhangxinchuang-server-xxxx:10000` 内网地址，也会自动兜底转换为 `https://zhangxinchuang-server-xxxx.onrender.com` 公网地址再连接。
+
+如果你重新同步/刷新 Blueprint，新版会自动把 `LINJIAN_URL` 改为引用 server 的公网 `RENDER_EXTERNAL_URL`；如果你只点 **Redeploy**，也可以依靠新版 MCP 的兜底逻辑修复，不需要用户手动复制 URL。
+
+验证方式：打开 `zhangxinchuang-mcp` 的 `/health`，如果看到 `fallback_linjian_urls` 里出现 `https://...onrender.com`，说明旧内网地址兼容逻辑已经生效。
+
+## Railway 手动双服务部署
+
+Railway 请使用手动双服务部署。后端和 MCP 要分成两个服务，它们可以来自同一个 GitHub 仓库，但 Root Directory、启动命令和环境变量不同。
+
+### 第一步：准备 Token
+
+先生成一个长随机 Token：
 
 ```bash
 python3 - <<'PY'
@@ -152,234 +263,172 @@ print(secrets.token_urlsafe(32))
 PY
 ```
 
-部署完成后，打开 Render 给你的地址，例如：
+后面的 server、mcp、Android 设置页都使用同一个 Token。
+
+### 第二步：部署 server 服务
+
+在 Railway 新建一个 Project，然后从 GitHub 仓库创建第一个服务：
 
 ```text
-https://your-peek-server.onrender.com/health
-```
-
-看到 `ok: true` 就说明后端在线。
-
-### B. 部署 MCP
-
-再新建一个 Render Web Service，仍然连接同一个仓库。
-
-配置：
-
-```text
-Root Directory: mcp
-Build Command: npm install
-Start Command: npm start
+服务名：server
+Root Directory：server
+Build Command：留空
+Start Command：留空
+Dockerfile Path：Dockerfile
 ```
 
 环境变量：
 
-```text
-LINJIAN_URL=https://你的后端地址.onrender.com
-LINJIAN_TOKEN=和后端完全一样的 token
-LINJIAN_DEFAULT_DEVICE=android-phone
-MCP_ACCESS_KEY=另一串仅供 AI 客户端使用的随机密钥
-```
-
-部署完成后，MCP 地址通常是：
-
-```text
-https://your-peek-mcp.onrender.com/mcp/<MCP_ACCESS_KEY>
-```
-
-如果你的客户端只支持 SSE，就用：
-
-```text
-https://your-peek-mcp.onrender.com/sse/<MCP_ACCESS_KEY>
-```
-
-## 部署教程 2：Hugging Face Spaces
-
-Hugging Face Spaces 更适合公开展示或免费测试。建议分成两个 Space：一个跑 `server`，一个跑 `mcp`。
-
-### A. server Space
-
-1. 打开 Hugging Face，点 **New Space**。
-2. Space SDK 选 **Docker**。
-3. 新建后，把本仓库上传进去。
-4. 在 Space 根目录新建一个 `Dockerfile`，内容如下：
-
-```dockerfile
-FROM python:3.11-slim
-WORKDIR /app
-COPY server/ /app/
-ENV LINJIAN_HOST=0.0.0.0
-ENV PORT=7860
-CMD ["python", "linjian_server.py"]
-```
-
-5. 在 Space 的 **Settings → Variables and secrets** 添加：
-
-```text
-LINJIAN_TOKEN=自己生成的一长串随机 token
+```env
+LINJIAN_TOKEN=第一步生成的长随机token
+LINJIAN_HOST=0.0.0.0
 LINJIAN_KEEP=3
-```
-
-6. 等 Space 构建完成，访问：
-
-```text
-https://你的用户名-your-server.hf.space/health
-```
-
-看到 `ok: true` 就成功。
-
-### B. MCP Space
-
-再建第二个 Docker Space，把本仓库上传进去，根目录 `Dockerfile` 改成：
-
-```dockerfile
-FROM node:20-slim
-WORKDIR /app
-COPY mcp/package*.json /app/
-RUN npm install
-COPY mcp/ /app/
-ENV PORT=7860
-CMD ["npm", "start"]
-```
-
-在 Space 的 Variables and secrets 添加：
-
-```text
-LINJIAN_URL=https://你的-server-space.hf.space
-LINJIAN_TOKEN=和 server 完全一样的 token
 LINJIAN_DEFAULT_DEVICE=android-phone
-MCP_ACCESS_KEY=另一串仅供 AI 客户端使用的随机密钥
 ```
 
-MCP 地址：
+注意：Railway 会自动提供 `PORT`，不要强行写死 `LINJIAN_PORT`。后端代码会优先读取 Railway 的 `PORT`。server 目录已经内置 `Dockerfile`，Root Directory 设为 `server` 后，Railway 不需要再猜 Python 构建方式。
+
+部署完成后，给 server 服务生成公网域名，访问：
 
 ```text
-https://你的用户名-your-mcp.hf.space/mcp/<MCP_ACCESS_KEY>
+https://你的-server-域名/health
 ```
 
-SSE 地址：
+看到 `ok: true` 就说明 server 可用。
+
+### 第三步：部署 MCP 服务
+
+在同一个 Railway Project 中，从同一 GitHub 仓库再创建第二个服务：
 
 ```text
-https://你的用户名-your-mcp.hf.space/sse/<MCP_ACCESS_KEY>
+服务名：mcp
+Root Directory：mcp
+Build Command：留空
+Start Command：pnpm start
 ```
 
-## 部署教程 3：本地 / Codespaces
+环境变量：
 
-适合先测试，不一定要公网。
+```env
+LINJIAN_URL=https://你的-server-域名
+LINJIAN_TOKEN=第一步生成的同一个长随机token
+LINJIAN_DEFAULT_DEVICE=android-phone
+```
 
-### A. 启动后端
+`LINJIAN_URL` 必须填写 server 的公网地址，不要填 MCP 自己的地址，也不要在末尾加 `/`。
+
+部署完成后，给 MCP 服务生成公网域名，访问：
+
+```text
+https://你的-mcp-域名/health
+```
+
+看到 `ok: true`、`has_url: true`、`has_token: true` 就说明 MCP 可用。注意：AI/MCP 客户端只能填写 MCP 服务域名，不能把 server 域名加 `/mcp` 当作 MCP 地址。
+
+AI/MCP 客户端连接：
+
+```text
+https://你的-mcp-域名/mcp
+```
+
+或：
+
+```text
+https://你的-mcp-域名/sse
+```
+
+### 第四步：连接 Android
+
+Android 设置页填写：
+
+```text
+服务器地址：https://你的-server-域名
+Token：第一步生成的同一个 token
+设备 ID：android-phone
+```
+
+然后打开无障碍服务、通知权限、使用情况访问权限，回到 App 点击启动。用“测试截图上传”或 MCP 的 `linjian_status` 检查是否连通。
+
+如果开启无障碍后回到掌心窗仍显示“已关闭/待开启”，请先安装本版或更新后的 APK；本版已修复无障碍服务声明与状态检测。若系统提示“受限设置/出于安全考虑不可用”，请到系统设置 → 应用 → 掌心窗 → 右上角菜单 → 允许受限设置，然后再回无障碍里开启“掌心窗服务”。
+
+## 局域网部署教程
+
+局域网部署适合只在自己电脑和自己手机之间使用。电脑和手机需要连接同一个 Wi-Fi。
+
+### 启动 server
 
 ```bash
 cd server
-python3 - <<'PY'
-import secrets
-print('LINJIAN_TOKEN=' + secrets.token_urlsafe(32))
-PY
+cp .env.example .env
 ```
 
-把输出的 Token 记下来，然后启动：
+修改 `server/.env`：
+
+```env
+LINJIAN_TOKEN=你的长随机token
+LINJIAN_HOST=0.0.0.0
+LINJIAN_PORT=8513
+LINJIAN_KEEP=3
+LINJIAN_DEFAULT_DEVICE=android-phone
+```
+
+启动：
 
 ```bash
-export LINJIAN_TOKEN='换成刚刚生成的token'
-export LINJIAN_HOST=0.0.0.0
-export LINJIAN_PORT=8513
 python3 linjian_server.py
 ```
 
-看到 `掌心窗 server started` 或访问 `/health` 正常即可。
+查看电脑局域网 IP，例如 `192.168.1.23`。手机端服务器地址填写：
 
-### B. 启动 MCP
+```text
+http://192.168.1.23:8513
+```
 
-新开一个终端：
+如果手机连不上，优先检查：电脑防火墙、手机和电脑是否同一 Wi-Fi、地址是否多写斜杠、Token 是否一致。
+
+### 启动本地 MCP
 
 ```bash
 cd mcp
 npm install
-export LINJIAN_URL='http://127.0.0.1:8513'
-export LINJIAN_TOKEN='和后端一样的token'
-export LINJIAN_DEFAULT_DEVICE='android-phone'
-export MCP_ACCESS_KEY='另一串仅供AI客户端使用的随机密钥'
-npm start
+LINJIAN_URL=http://192.168.1.23:8513 LINJIAN_TOKEN=你的长随机token npm start
 ```
 
-本地 MCP 地址：
+默认 MCP 监听：
 
 ```text
-http://127.0.0.1:8787/mcp/<MCP_ACCESS_KEY>
+http://127.0.0.1:8787/mcp
+http://127.0.0.1:8787/sse
 ```
 
-Codespaces 里要把端口 8513 和 8787 设为公开或转发，再把手机端服务器地址填成 8513 的公开地址。
+如果 AI/MCP 客户端和 MCP 服务不在同一台电脑，需要把 `127.0.0.1` 换成 MCP 所在电脑的局域网 IP，并确认防火墙放行端口 `8787`。
 
-## 常见问题
+Android 允许连接自建局域网 HTTP 地址；公网部署仍建议使用 HTTPS。
 
-### 手机没有反应
+## MCP 工具概览
 
-先看这几项：
+MCP 详细工具说明见 [docs/mcp.md](docs/mcp.md)。常用工具分组如下：
 
-1. App 里服务器地址是否是完整 `https://...`，不要多一个斜杠。
-2. 手机端 Token、server 环境变量、MCP 环境变量是否完全一致。
-3. 手机端是否点了“启动”。
-4. 无障碍服务是否开启。
-5. Android 13+ 是否允许通知权限。
-6. Render / Hugging Face 免费实例是否刚从休眠中醒来，第一次请求可能慢。
+- **状态与截图**：`linjian_status`、`peek_screen`、`latest_screen`、`get_life_state`、`get_phone_state`、`get_screen_nodes`。
+- **点击与输入**：`tap_text`、`input_text`、`send_phone_command`、`run_sequence`、`run_preset`。
+- **App 控制**：`open_app`、`phone_home`、`phone_back`、`phone_recents`、`phone_screen_off`、`list_known_apps`、`save_known_app`。
+- **通知与提醒**：`send_notification`、`set_alarm`、`get_weather_state`、`send_weather_notification`。
+- **日历与窗语**：`get_window_whisper`、`set_window_whisper`、`list_guardian_days`、`add_guardian_day`、`update_guardian_day`、`delete_guardian_day`。
+- **TA 的日记**：创建/重命名日记本，写入、读取、搜索、更新和删除本机日记；正文不默认上传云端。
+- **归电与关心**：`get_guidian_state`、`set_guidian_config`、`trigger_guidian`、`mark_guidian_returned`、`active_care_check`、`care_action`。
+- **门禁/屏幕休息**：`screen_break_app`、`temporary_screen_break_release`、`end_screen_break`、`extend_screen_break`、`get_screen_break_state`、`list_screen_break_apps`、`add_screen_break_app`、`set_screen_break_passphrase`。
+- **到访与活动**：`record_visit`、`get_last_visit`、`get_visit_history`、`get_visit_stats`、`get_activity_events`、`add_activity_event`、`get_companion_actions`。
 
-### 截图截到前一个页面
-
-截图前加等待，例如 `wait_seconds=20`，或者先回到目标 App 前台再请求截图。
-
-### 打不开目标 App
-
-公开版不默认回 ChatGPT。请在 App 的“状态 → 回家模式 → 目标 App 包名”里填写你自己的目标包名，例如某个 AI 客户端或浏览器包名。也可以用 `save_known_app` 保存昵称，再用 `open_app` 打开。
-
-### 小红书评论模式怎么用
-
-- `mode=manual`：只写入草稿，不自动发送。
-- `mode=auto`：追加 `author_tag` 后自动点发送。只在你明确授权时使用。
-
-示例：
-
-```json
-{
-  "text": "这个标题真的有点茶哈哈哈",
-  "mode": "manual",
-  "author_tag": "（AI助手发）"
-}
-```
+截图、读屏、自动点击、输入、门禁、息屏和自动评论都属于敏感能力，只应在本人设备、本人服务和明确授权的 MCP 客户端中使用。
 
 ## 安全边界
 
-- Token 不能公开。
-- `MCP_ACCESS_KEY` 和带密钥的完整 MCP 地址都不能公开。
-- 不要接入陌生人提供的 MCP 客户端。
-- 不要在他人设备上使用。
-- 回家模式可以只开提醒，不开自动打开目标 App。
-- 评论自动发送建议默认关闭，先用草稿模式确认。
+- 不要公开 `LINJIAN_TOKEN`。
+- 不要把 MCP 服务连接到不可信客户端。
+- 不要用掌心窗管理别人的设备。
+- 自动发送评论、点击按钮、读屏、截图、门禁、息屏等动作建议默认手动确认。
+- 公开版不应写死私人姓名、私人关系、私人服务地址或私人接口。
 
-- v0.2.2 hotfix: allow LAN HTTP backend for self-hosted users.
+许可条款见 [LICENSE](LICENSE)。本项目不是 MIT/Apache/GPL 等开放源代码许可证；源码公开仅用于透明、学习、审计、个人自用部署和个人本地修改。未经项目作者明确书面许可，不得改名/换图标/换署名后重新发布衍生版本，也不得分发重新打包的 APK、镜像、压缩包或托管服务。
 
-
-## v0.3.4.5 Render 地址说明
-
-如果你的 Render 服务名里带 `rork`，这是允许的。v0.3.4.5 不再按域名关键词拦截服务器地址。
-
-正确填写格式：
-
-```
-https://你的服务名.onrender.com
-```
-
-也可以误填 `/health` 或 `/api/poll`，App 会自动清理成主地址。
-
-排查顺序：先用浏览器打开 `https://你的服务名.onrender.com/health`，确认服务能响应；再检查 App Token 是否与 Render 环境变量一致。
-
-## v0.3.4.5 不再误拦 Render 域名
-
-v0.3.4.4 曾把部分带 `rork` 的地址当作旧测试地址拦截。v0.3.4.5 已取消这个黑名单逻辑，改为按真实联网结果判断。
-
-常见日志含义：
-
-- `DNS 解析失败`：手机网络暂时找不到域名，确认地址无误，服务 Live，刚创建可等几分钟。
-- `连接超时`：Render 免费服务可能在冷启动，等 1 分钟再试。
-- `HTTP 401/403`：Token 不一致。
-- `HTTP 404`：部署的后端接口不匹配。
-- `HTTP 5xx`：服务器启动失败或内部错误，查看 Render Logs。
+> v0.3.6.6 补充：无障碍状态会在从系统设置返回后延迟复查多次，并兼容不同系统写入无障碍组件名的格式差异；如果侧载 APK 被系统拦截，App 会提示去“应用信息 → 允许受限设置”，再回无障碍开启“掌心窗服务”。

@@ -17,7 +17,6 @@ import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Locale;
-import java.util.Map;
 
 /** 掌心窗 · 归电：只存连接状态，不读取聊天内容。 */
 public class GuidianState {
@@ -54,12 +53,14 @@ public class GuidianState {
 
     public static SharedPreferences prefs(Context ctx) { return AppPrefs.get(ctx); }
 
-    public static String defaultPrompts() {
-        return "{AI}：好久没回来啦。\n今天还没有见到你。\n{AI}来敲门。\n忙完了吗？\n我在等你回来。\n回来让我看一眼。\n{USER}，别躲太久。";
+    public static String defaultPrompts(Context ctx) {
+        String user = AppPrefs.userName(ctx);
+        String companion = AppPrefs.companionName(ctx);
+        return user + "，好久没回来啦。\n今天还没有见到你。\n" + companion + "来敲门。\n忙完了吗？\n我在等你。\n回来看看我吧。\n" + user + "，别躲太久。";
     }
 
     public static String defaultReasons() {
-        return "在忙\n上课中\n不方便\n困了\n晚点回来\n今天想安静一下";
+        return "在忙\n上课中\n不方便\n困了\n晚点找你\n今天想安静一下";
     }
 
     public static JSONObject config(Context ctx) {
@@ -82,10 +83,7 @@ public class GuidianState {
             o.put("quiet_start", p.getString(KEY_QUIET_START, "23:30"));
             o.put("quiet_end", p.getString(KEY_QUIET_END, "08:00"));
             o.put("target_package", targetPackage(ctx));
-            o.put("target_label", targetLabel(ctx));
-            o.put("ai_name", AppPrefs.partnerName(ctx));
-            o.put("user_name", AppPrefs.userName(ctx));
-            o.put("theme", p.getString(KEY_THEME, "暮夜蓝紫"));
+            o.put("theme", themeName(ctx));
             o.put("avatar_uri", p.getString(KEY_AVATAR_URI, ""));
             o.put("today_date", today());
             o.put("today_count", p.getInt(KEY_TODAY_COUNT, 0));
@@ -102,7 +100,7 @@ public class GuidianState {
             o.put("next_prompt_after_ms", next);
             o.put("next_prompt_after", fmt(next));
             o.put("in_quiet_time", inQuietTime(ctx, now));
-            o.put("prompts", p.getString(KEY_PROMPTS, defaultPrompts()));
+            o.put("prompts", p.getString(KEY_PROMPTS, defaultPrompts(ctx)));
             o.put("quick_reasons", p.getString(KEY_REASONS, defaultReasons()));
             long autoCheckAt = p.getLong(KEY_LAST_AUTO_CHECK_AT, 0);
             long lastDueAt = p.getLong(KEY_LAST_DUE_AT, 0);
@@ -120,8 +118,7 @@ public class GuidianState {
     public static String summaryText(Context ctx) {
         ensureInitialized(ctx);
         SharedPreferences p = prefs(ctx);
-        String ai = AppPrefs.partnerName(ctx);
-        if (!p.getBoolean(KEY_ENABLED, true)) return "归电已关闭 · " + ai + "先不敲门";
+        if (!p.getBoolean(KEY_ENABLED, true)) return "归电已关闭 · " + AppPrefs.companionName(ctx) + "暂不敲门";
         resetDailyIfNeeded(ctx);
         long now = System.currentTimeMillis();
         long lastReturn = p.getLong(KEY_LAST_RETURN_AT, now);
@@ -134,9 +131,7 @@ public class GuidianState {
     public static String detailText(Context ctx) {
         JSONObject o = config(ctx);
         StringBuilder sb = new StringBuilder();
-        sb.append("归电对象：").append(o.optString("ai_name", AppPrefs.partnerName(ctx))).append("\n");
-        sb.append("目标 App：").append(o.optString("target_label", targetLabel(ctx))).append("\n");
-        sb.append("主题：").append(o.optString("theme", "暮夜蓝紫")).append("\n");
+        sb.append("主题：").append(o.optString("theme", "粉色")).append("\n");
         sb.append("今日归电：").append(o.optInt("today_count", 0)).append("/").append(o.optInt("daily_max", 3)).append("\n");
         sb.append("下次最早：").append(o.optString("next_prompt_after", "-")).append("\n");
         String reason = o.optString("last_reject_reason", "");
@@ -146,7 +141,7 @@ public class GuidianState {
         String auto = o.optString("last_auto_check_at", "");
         if (auto.length() > 0) sb.append("上次检查：").append(auto).append("\n");
         if (o.optBoolean("due_but_not_shown", false)) sb.append("诊断：已经到点但未弹，等待补弹检查。\n");
-        sb.append("只检测目标 App 是否前台，不读取聊天内容。");
+        sb.append("只检测已设置目标应用是否在前台，不读取应用内容。");
         return sb.toString();
     }
 
@@ -154,15 +149,18 @@ public class GuidianState {
     public static int cooldownMin(Context ctx) { return clamp(prefs(ctx).getInt(KEY_COOLDOWN_MIN, 60), 0, 10080); }
     public static int dailyMax(Context ctx) { return clamp(prefs(ctx).getInt(KEY_DAILY_MAX, 3), 0, 99); }
     public static String targetPackage(Context ctx) {
-        String raw = prefs(ctx).getString(KEY_TARGET_PACKAGE, "");
-        if (raw == null || raw.trim().isEmpty()) return AppPrefs.homeTargetPackage(ctx);
-        String resolved = AppPrefs.packageForApp(ctx, raw.trim());
-        if (resolved == null || resolved.trim().isEmpty()) resolved = raw.trim();
-        return AppPrefs.isPackageLike(resolved) ? resolved.trim() : AppPrefs.homeTargetPackage(ctx);
+        String fallback = AppPrefs.homeTargetPackage(ctx);
+        String pkg = prefs(ctx).getString(KEY_TARGET_PACKAGE, fallback);
+        return (pkg == null || !AppPrefs.isPackageLike(pkg)) ? fallback : pkg.trim();
     }
+
     public static String targetLabel(Context ctx) {
         String target = targetPackage(ctx);
-        for (Map.Entry<String, String> e : AppPrefs.allApps(ctx).entrySet()) {
+        if (target == null || target.trim().isEmpty()) return "未设置";
+        for (java.util.Map.Entry<String, String> e : AppPrefs.targetApps(ctx).entrySet()) {
+            if (target.equals(e.getValue())) return e.getKey();
+        }
+        for (java.util.Map.Entry<String, String> e : AppPrefs.allApps(ctx).entrySet()) {
             if (target.equals(e.getValue())) return e.getKey();
         }
         return target;
@@ -175,6 +173,8 @@ public class GuidianState {
                 .putString(KEY_LAST_RETURN_SOURCE, source == null ? "unknown" : source)
                 .apply();
         DebugState.append(ctx, "归电已记录回来：" + (source == null ? "unknown" : source));
+        if (!"target_foreground".equals(source))
+            ActivityEventStore.recordPhone(ctx, "guidian_return", "回应归电", source == null ? "" : source);
     }
 
     public static void reject(Context ctx, String reason) {
@@ -184,6 +184,7 @@ public class GuidianState {
                 .putString(KEY_LAST_REJECT_REASON, reason == null ? "" : reason.trim())
                 .apply();
         DebugState.append(ctx, "归电已拒绝：" + (reason == null ? "" : reason.trim()));
+        ActivityEventStore.recordPhone(ctx, "guidian_reject", "稍后回应归电", reason == null ? "" : reason.trim());
     }
 
     public static void evaluate(Context ctx, JSONObject state) {
@@ -199,7 +200,7 @@ public class GuidianState {
 
             if (targetPackage(ctx).equals(current)) {
                 long last = p.getLong(KEY_LAST_RETURN_AT, 0);
-                if (now - last > 30000L) markReturned(ctx, "target_app_foreground");
+                if (now - last > 30000L) markReturned(ctx, "target_foreground");
                 recordAutoCheck(ctx, now, due ? next : 0, due, "already_in_target_app", "");
                 return;
             }
@@ -232,7 +233,7 @@ public class GuidianState {
             if (!force && now - lastReturn < intervalMin(ctx) * 60000L) return o.put("ok", false).put("reason", "interval_not_reached");
             if (!force && now - lastPrompt < cooldownMin(ctx) * 60000L) return o.put("ok", false).put("reason", "cooldown");
             String current = ScreenshotService.currentPackage();
-            if (!force && targetPackage(ctx).equals(current)) return o.put("ok", false).put("reason", "already_in_target_app");
+            if (!force && !targetPackage(ctx).isEmpty() && targetPackage(ctx).equals(current)) return o.put("ok", false).put("reason", "already_in_target_app");
             return o.put("ok", true);
         } catch (Exception e) { try { o.put("ok", false).put("reason", ScreenshotService.shortMsg(e)); } catch (Exception ignored) { } return o; }
     }
@@ -284,13 +285,10 @@ public class GuidianState {
                 if (p.has("quiet_enabled")) e.putBoolean(KEY_QUIET_ENABLED, p.optBoolean("quiet_enabled", true));
                 if (p.has("quiet_start")) e.putString(KEY_QUIET_START, p.optString("quiet_start", "23:30"));
                 if (p.has("quiet_end")) e.putString(KEY_QUIET_END, p.optString("quiet_end", "08:00"));
-                if (p.has("target_package")) { String pkg = AppPrefs.saveHomeTarget(ctx, p.optString("target_package", targetPackage(ctx))); if (AppPrefs.isPackageLike(pkg)) e.putString(KEY_TARGET_PACKAGE, pkg); }
-                if (p.has("target_app")) { String pkg = AppPrefs.saveHomeTarget(ctx, p.optString("target_app", targetPackage(ctx))); if (AppPrefs.isPackageLike(pkg)) e.putString(KEY_TARGET_PACKAGE, pkg); }
-                if (p.has("theme")) e.putString(KEY_THEME, p.optString("theme", "暮夜蓝紫"));
-                if (p.has("prompts")) e.putString(KEY_PROMPTS, p.optString("prompts", defaultPrompts()));
+                if (p.has("target_package")) { String pkg = p.optString("target_package", targetPackage(ctx)); if (AppPrefs.isPackageLike(pkg)) e.putString(KEY_TARGET_PACKAGE, pkg); }
+                if (p.has("theme")) e.putString(KEY_THEME, normalizeTheme(p.optString("theme", "粉色")));
+                if (p.has("prompts")) e.putString(KEY_PROMPTS, p.optString("prompts", defaultPrompts(ctx)));
                 if (p.has("quick_reasons")) e.putString(KEY_REASONS, p.optString("quick_reasons", defaultReasons()));
-                if (p.has("partner_name")) e.putString(AppPrefs.KEY_PARTNER_NICKNAME, p.optString("partner_name", AppPrefs.partnerName(ctx)).trim());
-                if (p.has("ai_name")) e.putString(AppPrefs.KEY_PARTNER_NICKNAME, p.optString("ai_name", AppPrefs.partnerName(ctx)).trim());
                 e.apply();
                 DebugState.append(ctx, "归电设置已由 MCP 更新");
                 return config(ctx).put("ok", true).put("result", "guidian_config_saved");
@@ -318,19 +316,19 @@ public class GuidianState {
     }
 
     public static String pickPrompt(Context ctx) {
-        String raw = prefs(ctx).getString(KEY_PROMPTS, defaultPrompts());
+        String raw = prefs(ctx).getString(KEY_PROMPTS, defaultPrompts(ctx));
         String[] lines = raw == null ? new String[0] : raw.split("\\n");
         int usable = 0;
         for (String line : lines) if (line != null && line.trim().length() > 0) usable++;
-        if (usable == 0) return fill(ctx, "{AI}：好久没回来啦。");
+        if (usable == 0) return AppPrefs.userName(ctx) + "，好久没回来啦。";
         int target = (int)((System.currentTimeMillis() / 60000L) % usable);
         int idx = 0;
         for (String line : lines) {
             if (line == null || line.trim().length() == 0) continue;
-            if (idx == target) return fill(ctx, line.trim());
+            if (idx == target) return line.trim();
             idx++;
         }
-        return fill(ctx, "{AI}：好久没回来啦。");
+        return AppPrefs.userName(ctx) + "，好久没回来啦。";
     }
 
     public static String[] quickReasons(Context ctx) {
@@ -338,11 +336,17 @@ public class GuidianState {
         return raw == null ? defaultReasons().split("\\n") : raw.split("\\n");
     }
 
-    public static int[] themeColors(Context ctx) {
-        String theme = prefs(ctx).getString(KEY_THEME, "暮夜蓝紫");
-        if ("云海青灰".equals(theme)) return new int[]{0xFF182332, 0xFF425B69, 0xFFE9F0F2};
-        if ("落日莓雾".equals(theme)) return new int[]{0xFF241528, 0xFF743052, 0xFFFFB48C};
-        return new int[]{0xFF111A35, 0xFF5B3D74, 0xFFFFA6BF};
+    public static String themeName(Context ctx) {
+        String stored = prefs(ctx).getString(KEY_THEME, "粉色");
+        String normalized = normalizeTheme(stored);
+        if (!normalized.equals(stored)) prefs(ctx).edit().putString(KEY_THEME, normalized).apply();
+        return normalized;
+    }
+
+    private static String normalizeTheme(String theme) {
+        if ("白色".equals(theme) || "黑色".equals(theme) || "粉色".equals(theme)) return theme;
+        // 旧三套归电主题统一迁移到新的粉色主题。
+        return "粉色";
     }
 
     private static boolean showFullScreenNotification(Context ctx, String prompt) {
@@ -350,10 +354,9 @@ public class GuidianState {
             if (Build.VERSION.SDK_INT >= 33 && ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false;
             NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm == null) return false;
-            String ai = AppPrefs.partnerName(ctx);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "掌心窗归电", NotificationManager.IMPORTANCE_HIGH);
-                channel.setDescription(ai + "来电式全屏提醒");
+                channel.setDescription(AppPrefs.companionName(ctx) + "的来电式全屏提醒");
                 channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
                 channel.enableVibration(true);
                 nm.createNotificationChannel(channel);
@@ -363,7 +366,7 @@ public class GuidianState {
             full.putExtra("prompt", prompt);
             PendingIntent fullPi = PendingIntent.getActivity(ctx, 230723, full, Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT : PendingIntent.FLAG_UPDATE_CURRENT);
             Notification.Builder b = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? new Notification.Builder(ctx, CHANNEL_ID) : new Notification.Builder(ctx);
-            Notification n = b.setContentTitle(ai + "来电")
+            Notification n = b.setContentTitle(AppPrefs.companionName(ctx) + "来电")
                     .setContentText(prompt)
                     .setSmallIcon(android.R.drawable.sym_call_incoming)
                     .setContentIntent(fullPi)
@@ -412,10 +415,6 @@ public class GuidianState {
         } catch (Exception e) { return def; }
     }
 
-    private static String fill(Context ctx, String raw) {
-        String s = raw == null ? "" : raw;
-        return s.replace("{AI}", AppPrefs.partnerName(ctx)).replace("{USER}", AppPrefs.userName(ctx));
-    }
     private static String today() { return new SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(new Date()); }
     private static String fmt(long ms) { if (ms <= 0) return ""; return new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(new Date(ms)); }
     private static int clamp(int v, int min, int max) { return Math.max(min, Math.min(max, v)); }

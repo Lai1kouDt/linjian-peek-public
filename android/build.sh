@@ -47,32 +47,39 @@ zip -d app.tmp.apk classes.dex 2>/dev/null || true
 zip -j app.tmp.apk classes.dex
 mv app.tmp.apk app.unsigned.apk
 
-echo "=== Generating DEBUG signing key ==="
-DEBUG_KS=$OUT/debug.jks
-if [ ! -f "$DEBUG_KS" ]; then
-    keytool -genkeypair -v \
-        -keystore "$DEBUG_KS" \
-        -keyalg RSA -keysize 2048 \
-        -validity 10000 \
-        -alias linjian-peek \
-        -storepass linjian-debug \
-        -keypass linjian-debug \
-        -dname "CN=Zhangxinchuang Public v0.3.5.1 Guidian Debug"
+echo "=== Loading fixed PUBLIC signing key ==="
+PUBLIC_KS=$PROJECT/signing/zhangxinchuang-public-release.p12
+if [ ! -f "$PUBLIC_KS" ]; then
+    echo "Public release keystore not found: $PUBLIC_KS"
+    exit 1
 fi
 
 echo "=== Aligning ==="
 $BUILD_TOOLS/zipalign -f 4 app.unsigned.apk app.aligned.apk
 
-echo "=== Signing debug APK ==="
-$BUILD_TOOLS/apksigner sign \
-    --ks "$DEBUG_KS" \
-    --ks-pass pass:linjian-debug \
-    --key-pass pass:linjian-debug \
-    --ks-key-alias linjian-peek \
-    --out "$PROJECT/Zhangxinchuang-public-v0.3.5.1.apk" \
-    app.aligned.apk
+if [ -n "${PUBLIC_KS_PASSWORD:-}" ]; then
+    echo "=== Signing public APK ==="
+    $BUILD_TOOLS/apksigner sign \
+        --ks "$PUBLIC_KS" \
+        --ks-type PKCS12 \
+        --ks-pass env:PUBLIC_KS_PASSWORD \
+        --key-pass env:PUBLIC_KS_PASSWORD \
+        --ks-key-alias zhangxinchuang-public \
+        --out "$PROJECT/PalmWindow-Lite-v0.3.9-lite.2.apk" \
+        app.aligned.apk
+
+    echo "=== Verifying fixed public signature ==="
+    VERIFY_OUTPUT=$($BUILD_TOOLS/apksigner verify --verbose --print-certs "$PROJECT/PalmWindow-Lite-v0.3.9-lite.2.apk")
+    echo "$VERIFY_OUTPUT"
+    echo "$VERIFY_OUTPUT" | grep -qi "aea75c9b2b5f5c42d56b72d4a69a79a38e1c57f27db021017be8656bc8f002fb"
+    OUTPUT_APK="$PROJECT/PalmWindow-Lite-v0.3.9-lite.2.apk"
+else
+    echo "=== Signing skipped: PUBLIC_KS_PASSWORD is not configured ==="
+    OUTPUT_APK="$PROJECT/PalmWindow-Lite-v0.3.9-lite.2-unsigned.apk"
+    cp app.aligned.apk "$OUTPUT_APK"
+fi
 
 echo ""
 echo "=== Done ==="
-echo "APK: $PROJECT/Zhangxinchuang-public-v0.3.5.1.apk"
-ls -lh "$PROJECT/Zhangxinchuang-public-v0.3.5.1.apk"
+echo "APK: $OUTPUT_APK"
+ls -lh "$OUTPUT_APK"

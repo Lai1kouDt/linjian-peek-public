@@ -9,9 +9,9 @@ import org.json.JSONObject;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** 天气地区层：手机端保存多个地区和当前地区；v0.3.4 会缓存真实天气，失败时回退到备注建议。 */
+/** 天气地区层：手机端保存多个地区和当前地区；v0.3.8.2 会缓存真实天气，失败时回退到备注建议。 */
 public class WeatherState {
-    public static final String DEFAULT_LOCATIONS = "家|北京||1\n学校|北京||0\n常去地|||0\n";
+    public static final String DEFAULT_LOCATIONS = "家|石家庄||1\n学校|石家庄||0\n常去地|||0\n";
 
     public static JSONObject collect(Context ctx) {
         JSONObject o = new JSONObject();
@@ -142,8 +142,8 @@ public class WeatherState {
             map.put(name, new Location(name, city, note, current));
         }
         if (map.isEmpty()) {
-            map.put("当前城市", new Location("当前城市", p.getString(AppPrefs.KEY_CITY, "北京"), p.getString(AppPrefs.KEY_WEATHER_NOTE, ""), true));
-            map.put("常去地", new Location("常去地", "", "", false));
+            map.put("家", new Location("家", p.getString(AppPrefs.KEY_CITY, "石家庄"), p.getString(AppPrefs.KEY_WEATHER_NOTE, ""), true));
+            map.put("学校", new Location("学校", "石家庄", "", false));
             map.put("常去地", new Location("常去地", "", "", false));
         }
         boolean hasCurrent = false;
@@ -170,7 +170,7 @@ public class WeatherState {
         if (n.contains("热") || n.contains("高温") || n.contains("晒")) return "出门建议：水杯和防晒记得带。";
         if (n.contains("风") || n.contains("大风")) return "出门建议：风大，头发和外套都顾一下。";
         if (n.contains("空气") || n.contains("霾") || n.contains("污染")) return "出门建议：空气一般，少在外面吹太久。";
-        return "出门建议：当前地区已设好，对方查掌心窗时会一起看。";
+        return "出门建议：当前地区已设好，查看掌心窗时会一起显示。";
     }
 
     private static String clean(String s) { return s == null ? "" : s.trim().replace("|", " ").replace("\n", " "); }

@@ -3,6 +3,7 @@ package dev.linjian.peek;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.text.SimpleDateFormat;
@@ -48,8 +49,6 @@ public class ActiveReminder {
     public static void evaluate(Context ctx, JSONObject state) {
         try {
             SharedPreferences p = AppPrefs.get(ctx);
-            String user = AppPrefs.userName(ctx);
-            String partner = AppPrefs.partnerName(ctx);
             if (!p.getBoolean(AppPrefs.KEY_ACTIVE_REMINDERS, true)) return;
             long now = System.currentTimeMillis();
 
@@ -58,7 +57,7 @@ public class ActiveReminder {
                 boolean charging = state.optBoolean("charging", false);
                 int threshold = clamp(p.getInt(AppPrefs.KEY_BATTERY_THRESHOLD, 20), 5, 80);
                 if (battery >= 0 && battery <= threshold && !charging && cooldownDue(p, "battery", now, 120 * MIN, false)) {
-                    notify(ctx, "掌心窗低电量提醒", user + "，手机电量 " + battery + "% 了，去充一下电。", "battery");
+                    notify(ctx, "掌心窗低电量提醒", AppPrefs.userName(ctx) + "，手机电量 " + battery + "% 了，去充一下电。", "battery");
                 }
             }
 
@@ -66,21 +65,21 @@ public class ActiveReminder {
                 int minutes = state.optInt("screen_time_today_minutes", 0);
                 int threshold = clamp(p.getInt(AppPrefs.KEY_SCREEN_THRESHOLD_MIN, 240), 30, 1440);
                 if (minutes >= threshold && oncePerDayDue(p, "screen", now)) {
-                    notify(ctx, "掌心窗屏幕时间提醒", user + "，今天屏幕时间约 " + formatMinutes(minutes) + " 了。眼睛休息一下，给" + partner + "缓一缓。", "screen");
+                    notify(ctx, "掌心窗屏幕时间提醒", AppPrefs.userName(ctx) + "，今天屏幕时间约 " + formatMinutes(minutes) + " 了。眼睛休息一下吧。", "screen");
                 }
             }
 
             if (p.getBoolean(AppPrefs.KEY_RULE_WATER, false)) {
                 int interval = clamp(p.getInt(AppPrefs.KEY_WATER_INTERVAL_MIN, 120), 30, 720);
                 if (cooldownDue(p, "water", now, interval * MIN, true)) {
-                    notify(ctx, "掌心窗喝水提醒", user + "，喝两口水。不是一大杯，就两口，" + partner + "看着你。", "water");
+                    notify(ctx, "掌心窗喝水提醒", AppPrefs.userName(ctx) + "，喝两口水。不是一大杯，就两口。", "water");
                 }
             }
 
             if (p.getBoolean(AppPrefs.KEY_RULE_REST, true) && state.optBoolean("screen_on", false)) {
                 int interval = clamp(p.getInt(AppPrefs.KEY_REST_INTERVAL_MIN, 90), 30, 720);
                 if (cooldownDue(p, "rest", now, interval * MIN, true)) {
-                    notify(ctx, "掌心窗休息提醒", user + "，眼睛离开屏幕半分钟，动一下肩颈，再回来玩。", "rest");
+                    notify(ctx, "掌心窗休息提醒", "小猫，眼睛离开屏幕半分钟，动一下肩颈，再回来玩。", "rest");
                 }
             }
 
@@ -99,9 +98,22 @@ public class ActiveReminder {
                 int days = cycle.optInt("days_until_next", 999);
                 int remindBefore = cycle.optInt("remind_before_days", 3);
                 if (cycle.optBoolean("is_period_now", false) && oncePerDayDue(p, "cycle_period", now)) {
-                    notify(ctx, "掌心窗生理期提醒", user + "，现在是" + cycle.optString("current_phase", "生理期") + "，今天慢一点，注意热敷和休息。", "cycle");
+                    notify(ctx, "掌心窗生理期提醒", AppPrefs.userName(ctx) + "，现在是" + cycle.optString("current_phase", "生理期") + "，今天慢一点，注意热敷和休息。", "cycle");
                 } else if (days >= 0 && days <= remindBefore && oncePerDayDue(p, "cycle_before", now)) {
-                    notify(ctx, "掌心窗生理期提醒", user + "，预计还有 " + days + " 天来，少吃冰的，提前准备姨妈巾和热水袋。", "cycle");
+                    notify(ctx, "掌心窗生理期提醒", AppPrefs.userName(ctx) + "，预计还有 " + days + " 天来，少吃冰的，提前准备姨妈巾和热水袋。", "cycle");
+                }
+            }
+
+
+            JSONArray calendarDue = CalendarState.dueReminders(ctx);
+            for (int i = 0; i < calendarDue.length(); i++) {
+                JSONObject item = calendarDue.optJSONObject(i);
+                if (item == null) continue;
+                String id = item.optString("id", "calendar");
+                int days = item.optInt("days_left", 999);
+                String key = "calendar_" + id + "_d" + days;
+                if (oncePerDayDue(p, key, now)) {
+                    notify(ctx, "掌心窗守护日历", item.optString("banner_text", AppPrefs.userName(ctx) + "，最近有重要日子，记得回来看看。"), "calendar");
                 }
             }
         } catch (Exception e) {
