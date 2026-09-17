@@ -2304,14 +2304,34 @@ app.post("/mcp", async (req, res) => {
   try { const server = makeServer(); const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined }); res.on("close", () => transport.close()); await server.connect(transport); await transport.handleRequest(req, res, req.body); }
   catch (err) { console.error(err); if (!res.headersSent) res.status(500).json({ jsonrpc: "2.0", error: { code: -32603, message: String(err?.message || err) }, id: null }); }
 });
-app.get("/mcp", (_req, res) => res.status(405).json({ ok: false, error: "Use POST /mcp for Streamable HTTP MCP." }));
 app.all("/mcp-wallet", (_req, res) => res.status(404).json({ ok: false, error: "This endpoint is not available in 掌心窗 Lite." }));
 const sseTransports = new Map();
-app.get("/sse", async (_req, res) => {
-  try { const transport = new SSEServerTransport("/messages", res); sseTransports.set(transport.sessionId, transport); res.on("close", () => { sseTransports.delete(transport.sessionId); transport.close(); }); await makeServer().connect(transport); }
+async function openSseTransport(messagePath, res) {
+  try { const transport = new SSEServerTransport(messagePath, res); sseTransports.set(transport.sessionId, transport); res.on("close", () => { sseTransports.delete(transport.sessionId); transport.close(); }); await makeServer().connect(transport); }
   catch (err) { console.error(err); if (!res.headersSent) res.status(500).end(String(err?.message || err)); }
+}
+async function handleSseMessage(req, res) {
+  const sessionId = req.query.sessionId;
+  const transport = sseTransports.get(sessionId);
+  if (!transport) return res.status(404).send("No SSE transport for sessionId");
+  await transport.handlePostMessage(req, res, req.body);
+}
+
+app.get("/sse", async (_req, res) => openSseTransport("/messages", res));
+app.post("/messages", handleSseMessage);
+
+// Older ChatGPT developer-mode connections can retain a URL ending in /mcp/
+// and fall back to legacy SSE relative to that base. Keep the modern POST /mcp
+// transport, while accepting both legacy probe shapes without exposing any
+// additional tools.
+app.get("/mcp", async (req, res) => {
+  if ((req.headers.accept || "").includes("text/event-stream")) {
+    return openSseTransport("/mcp/messages", res);
+  }
+  return res.status(405).json({ ok: false, error: "Use POST /mcp for Streamable HTTP MCP." });
 });
-app.post("/messages", async (req, res) => { const sessionId = req.query.sessionId; const transport = sseTransports.get(sessionId); if (!transport) return res.status(404).send("No SSE transport for sessionId"); await transport.handlePostMessage(req, res, req.body); });
+app.get("/mcp/sse", async (_req, res) => openSseTransport("/mcp/messages", res));
+app.post("/mcp/messages", handleSseMessage);
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`掌心窗 unified MCP listening on 0.0.0.0:${PORT}`);
   console.log(`LINJIAN_URL=${RAW_LINJIAN_URL || "<missing>"}`);
