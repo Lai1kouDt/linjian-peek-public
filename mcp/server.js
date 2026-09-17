@@ -2298,6 +2298,8 @@ app.get("/health", (_req, res) => res.json({
   fallback_linjian_urls: LINJIAN_URL_CANDIDATES.filter((u) => u !== RAW_LINJIAN_URL),
   tool_count: LITE_TOOL_NAMES.size,
   tools: Array.from(LITE_TOOL_NAMES),
+  legacy_sse_compat: true,
+  legacy_sse_alias_mode: "mcp-prefix",
   stability_note: "Lite 第一阶段：仅暴露连接检查、基础手机状态、锁屏和闹钟。旧模块暂留源码但不进入 MCP schema。"
 }));
 app.post("/mcp", async (req, res) => {
@@ -2332,6 +2334,7 @@ app.get("/mcp", async (req, res) => {
 });
 app.get("/mcp/sse", async (_req, res) => openSseTransport("/mcp/messages", res));
 app.post("/mcp/messages", handleSseMessage);
+app.get(/^\/mcp(?:\/.*)?$/, async (_req, res) => openSseTransport("/mcp/messages", res));
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`掌心窗 unified MCP listening on 0.0.0.0:${PORT}`);
   console.log(`LINJIAN_URL=${RAW_LINJIAN_URL || "<missing>"}`);
