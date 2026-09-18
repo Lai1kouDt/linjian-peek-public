@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="dev.linjian.peek"
+    package="dev.linjian.peek.lite"
     android:versionCode="30902"
     android:versionName="0.3.9-lite.2">
 
@@ -35,7 +35,7 @@
     </queries>
 
     <application
-        android:label="掌心窗"
+        android:label="掌心窗 Lite"
         android:icon="@drawable/ic_launcher"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="true"
@@ -46,7 +46,7 @@
         android:resizeableActivity="true">
 
         <activity
-            android:name=".LiteMainActivity"
+            android:name="dev.linjian.peek.LiteMainActivity"
             android:exported="true"
             android:screenOrientation="portrait"
             android:resizeableActivity="true"
@@ -58,19 +58,19 @@
         </activity>
 
         <activity
-            android:name=".MainActivity"
+            android:name="dev.linjian.peek.MainActivity"
             android:exported="false"
             android:screenOrientation="portrait"
             android:resizeableActivity="true"
             android:configChanges="keyboardHidden|orientation|screenSize|smallestScreenSize|density|uiMode" />
 
         <service
-            android:name=".CompanionService"
+            android:name="dev.linjian.peek.CompanionService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
         <service
-            android:name=".ScreenshotService"
+            android:name="dev.linjian.peek.ScreenshotService"
             android:label="@string/accessibility_name"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
