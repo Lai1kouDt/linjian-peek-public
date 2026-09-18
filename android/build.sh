@@ -29,6 +29,7 @@ $BUILD_TOOLS/aapt2 link \
     -I "$PLATFORM" \
     --manifest "$SRC/AndroidManifest.xml" \
     --java "$OUT/gen" \
+    --custom-package dev.linjian.peek \
     --auto-add-overlay \
     -R "$OUT/compiled_res"/*.flat
 
